@@ -86,16 +86,17 @@ class ImportApiTest {
                 "最高母线电压 400 Vdc"));
 
         String jobId = createJob(pdf, "sample.pdf");
-        String pageId = firstPageId(jobId);
 
-        // I7 解析
-        MvcResult recResult = mockMvc.perform(post("/api/imports/{jobId}/pages/{pageId}/recognize", jobId, pageId))
+        // I1 已自动解析，草稿已生成；从任务详情取 draftId（不再需要显式调 I7）
+        MvcResult detail = mockMvc.perform(get("/api/imports/{jobId}", jobId))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data[0].request.motorType").value("linear"))
-                .andExpect(jsonPath("$.data[0].request.spec.forceCont").value(120))
+                .andExpect(jsonPath("$.data.pages[0].status").value("RECOGNIZED"))
+                .andExpect(jsonPath("$.data.drafts.length()").value(1))
+                .andExpect(jsonPath("$.data.drafts[0].request.motorType").value("linear"))
+                .andExpect(jsonPath("$.data.drafts[0].request.spec.forceCont").value(120))
                 .andReturn();
-        JsonNode drafts = objectMapper.readTree(recResult.getResponse().getContentAsString()).path("data");
-        String draftId = drafts.get(0).path("draftId").asText();
+        String draftId = objectMapper.readTree(detail.getResponse().getContentAsString())
+                .path("data").path("drafts").get(0).path("draftId").asText();
 
         // I8 列表
         mockMvc.perform(get("/api/imports/{jobId}/drafts", jobId))
@@ -120,7 +121,7 @@ class ImportApiTest {
         mockMvc.perform(get("/api/motors/{id}", motorId))
                 .andExpect(jsonPath("$.data.modelName").value("ADR-END2END-001"))
                 .andExpect(jsonPath("$.data.entryMethod").value("识别草稿"))
-                .andExpect(jsonPath("$.data.spec.forceCont").value(120));   // 录入值 120 N，factor=1，内部单位一致
+                .andExpect(jsonPath("$.data.spec.forceCont").value(120));
 
         // I4 清理
         mockMvc.perform(delete("/api/imports/{jobId}", jobId)).andExpect(status().isOk());
@@ -214,7 +215,10 @@ class ImportApiTest {
         MockMultipartFile file = new MockMultipartFile("files", filename, "application/pdf", pdf);
         MvcResult result = mockMvc.perform(multipart("/api/imports").file(file))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.data.pages[0].status").value("PENDING"))
+                .andExpect(jsonPath("$.data.jobId").exists())
+                .andExpect(jsonPath("$.data.pages[0]").exists())
+                // I1 已自动解析：PDF 页状态应为 RECOGNIZED（不再 PENDING）
+                .andExpect(jsonPath("$.data.pages[0].status").value("RECOGNIZED"))
                 .andReturn();
         return jobId(result);
     }

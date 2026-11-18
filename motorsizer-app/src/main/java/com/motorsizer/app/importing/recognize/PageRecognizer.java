@@ -95,15 +95,20 @@ public class PageRecognizer {
                 }
             }
         }
+        // 按 typeOrder（直线→力矩→音圈）优先级遍历，严格大于才更新：
+        // 平局时取优先级高者（直线最常见；直线/音圈电气字段别名共用时优先直线）。
         MotorType best = null;
         int bestCount = 0;
-        for (Map.Entry<MotorType, Integer> e : counts.entrySet()) {
-            if (e.getValue() > bestCount || (e.getValue() == bestCount && best == null)) {
-                best = e.getKey();
-                bestCount = e.getValue();
+        for (MotorType type : MotorCatalogTemplates.typeOrder()) {
+            Integer c = counts.get(type);
+            if (c != null && c > bestCount) {
+                best = type;
+                bestCount = c;
             }
         }
-        return bestCount >= 2 ? best : null;   // 至少命中 2 个字段才认定类型
+        // 阈值=1：命中 1 个字段即认定类型并生成草稿（宁可多生成低置信度草稿供用户补全，
+        // 也不要因阈值过高返回 EMPTY 让用户面对空列表）。
+        return bestCount >= 1 ? best : null;
     }
 
     // ----------------------------------------------------------- 多列表头
@@ -291,8 +296,9 @@ public class PageRecognizer {
         Matcher mc = MODEL_CODE.matcher(line);
         while (mc.find()) {
             String candidate = mc.group();
-            // 排除纯数值或过短
-            if (candidate.length() >= 4 && candidate.contains("-")) {
+            // 型号代码：长度 ≥4，且至少含一个数字或含 '-'（区分于普通英文单词）
+            // 覆盖 ADR-001 / AXD-ERA-100 / AXD100 / ERA200 等命名
+            if (candidate.length() >= 4 && (candidate.contains("-") || candidate.matches(".*\\d.*"))) {
                 return candidate;
             }
         }

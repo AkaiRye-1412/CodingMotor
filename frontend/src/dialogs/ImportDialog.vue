@@ -77,8 +77,13 @@ async function createJob() {
   busy.value = true
   try {
     job.value = await createImportJob(pendingFiles.value)
-    step.value = 2
-    ElMessage.success(`任务已创建：${job.value.files.length} 个文件，${job.value.pages.length} 页`)
+    // 后端上传即自动解析，直接进草稿表格
+    step.value = 3
+    const draftN = job.value.drafts.length
+    const parsedPages = job.value.pages.filter((p) => p.status === 'RECOGNIZED').length
+    ElMessage.success(
+      `已识别 ${parsedPages}/${job.value.pages.length} 页，生成 ${draftN} 条草稿`,
+    )
   } catch (error) {
     ElMessage.error(error instanceof ApiError ? error.message : '创建任务失败')
   } finally {
@@ -110,15 +115,6 @@ async function recognize(pageId: string) {
   } finally {
     recognizingPageId.value = ''
   }
-}
-
-function gotoDrafts() {
-  if (drafts.value.length === 0) {
-    ElMessage.warning('当前没有草稿，请先解析页面')
-    return
-  }
-  commitResult.value = null
-  step.value = 3
 }
 
 async function toggleCheck(draft: Draft, checked: boolean) {
@@ -358,7 +354,7 @@ function confidenceType(c: number): 'success' | 'warning' | 'danger' {
       </el-upload>
       <div class="step-actions">
         <el-button type="primary" :loading="busy" :disabled="pendingFiles.length === 0" @click="createJob">
-          创建任务
+          上传并识别
         </el-button>
       </div>
 
@@ -384,8 +380,15 @@ function confidenceType(c: number): 'success' | 'warning' | 'danger' {
       </el-collapse>
     </div>
 
-    <!-- 步骤 2：解析核对 -->
+    <!-- 步骤 2：页面核对（可重新解析单页；默认上传时已自动识别，无需手动操作） -->
     <div v-else-if="step === 2 && job" class="step-body">
+      <el-alert
+        type="info"
+        :closable="false"
+        show-icon
+        title="上传时已自动识别所有页面"
+        description="下方可查看每页解析状态，或对某页重新解析。完成后返回草稿表格。"
+      />
       <div class="page-list">
         <div v-for="page in job.pages" :key="page.pageId" class="page-card">
           <div class="page-card-head">
@@ -408,8 +411,8 @@ function confidenceType(c: number): 'success' | 'warning' | 'danger' {
       </div>
       <div class="step-actions">
         <el-button @click="cancelJob">删除任务</el-button>
-        <el-button type="primary" :disabled="drafts.length === 0" @click="gotoDrafts">
-          下一步（{{ drafts.length }} 条草稿）
+        <el-button type="primary" @click="step = 3">
+          返回草稿表格（{{ drafts.length }} 条）
         </el-button>
       </div>
     </div>
@@ -550,7 +553,7 @@ function confidenceType(c: number): 'success' | 'warning' | 'danger' {
       </div>
 
       <div class="step-actions">
-        <el-button @click="step = 2">返回</el-button>
+        <el-button @click="step = 2">页面核对</el-button>
         <el-button @click="cancelJob">删除任务</el-button>
         <el-button type="primary" :loading="busy" :disabled="checkedCount === 0" @click="commit">
           提交勾选（{{ checkedCount }}）

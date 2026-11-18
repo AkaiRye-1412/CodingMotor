@@ -120,4 +120,55 @@ class PageRecognizerTest {
         PageRecognizer.Result result = recognizer.recognize(new PageText(List.of()), "f1p1", 1, "x.pdf");
         assertThat(result.status()).isEqualTo(PageStatus.EMPTY);
     }
+
+    @Test
+    void englishLabelsMatchViaAliases() {
+        // 全英文样册：验证英文别名（Continuous force / Force constant / Phase resistance 等）命中
+        List<String> lines = List.of(
+                "Model: GLM-S-200",
+                "Continuous force 120 N",
+                "Peak force 360 N",
+                "Force constant 8.5 N/Arms",
+                "Back EMF constant 3.9 V/(m/s)",
+                "Phase resistance 4.4 Ω",
+                "Continuous current 2.14 Arms",
+                "Peak current 6.4 Arms",
+                "Max. coil temp 110 °C",
+                "Thermal dissipation 1.1 W/°C",
+                "Bus voltage 400 Vdc");
+
+        PageRecognizer.Result result = recognizer.recognize(new PageText(lines), "f1p1", 1, "GLM.pdf");
+
+        assertThat(result.status()).isEqualTo(PageStatus.RECOGNIZED);
+        assertThat(result.drafts()).hasSize(1);
+        Draft draft = result.drafts().get(0);
+        assertThat(draft.request().modelName()).isEqualTo("GLM-S-200");
+        assertThat(draft.request().motorType()).isEqualTo("linear");
+        assertThat(draft.request().spec().get("forceCont")).isEqualTo(120.0);
+        assertThat(draft.request().spec().get("forcePeak")).isEqualTo(360.0);
+        assertThat(draft.request().spec().get("kf")).isEqualTo(8.5);
+        assertThat(draft.request().spec().get("r25")).isEqualTo(4.4);
+        assertThat(draft.request().spec().get("iCont")).isEqualTo(2.14);
+        assertThat(draft.request().spec().get("uBus")).isEqualTo(400.0);
+    }
+
+    @Test
+    void singleFieldStillProducesDraft() {
+        // 阈值=1：仅命中 1 个字段也应生成草稿（供用户在表格里补全其余字段）
+        List<String> lines = List.of(
+                "型号: ADR-MIN-001",
+                "持续推力 80 N",
+                "此处无任何已知字段",
+                "另一行无关说明文字");
+
+        PageRecognizer.Result result = recognizer.recognize(new PageText(lines), "f1p1", 1, "min.pdf");
+
+        assertThat(result.status()).isEqualTo(PageStatus.RECOGNIZED);
+        assertThat(result.drafts()).hasSize(1);
+        Draft draft = result.drafts().get(0);
+        assertThat(draft.request().modelName()).isEqualTo("ADR-MIN-001");
+        assertThat(draft.request().spec().get("forceCont")).isEqualTo(80.0);
+        // 命中少 → 置信度低，但不应阻断（Q5：仅提醒不阻断）
+        assertThat(draft.confidence()).isLessThan(0.6);
+    }
 }

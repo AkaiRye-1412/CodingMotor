@@ -65,40 +65,97 @@ public final class MotorCatalogTemplates {
     }
 
     // 直线 / 力矩共用的别名（同 key 在两套模板里语义一致，C-B 不变量）
-    private static final String[] A_FORCE_CONT = {"持续推力", "连续推力", "额定推力"};
-    private static final String[] A_FORCE_PEAK = {"峰值推力", "最大推力"};
-    private static final String[] A_KF = {"力常数", "推力常数"};
-    private static final String[] A_KE = {"反电势常数", "反电动势常数", "Back EMF", "反电势"};
-    private static final String[] A_KM = {"电机常数"};
-    private static final String[] A_R25 = {"相间电阻", "线间电阻", "电阻", "R25"};
-    private static final String[] A_L = {"相间电感", "线间电感", "电感"};
-    private static final String[] A_TE = {"电气时间常数"};
-    private static final String[] A_ICONT = {"持续电流", "连续电流", "额定电流", "Icont"};
-    private static final String[] A_IPEAK = {"峰值电流", "最大电流"};
-    private static final String[] A_PN = {"持续热功率", "热功率"};
-    private static final String[] A_TMAX = {"最高线圈温度", "最高温度", "最大温度", "Tmax"};
-    private static final String[] A_KTH = {"热耗散常数", "散热常数", "热阻"};
-    private static final String[] A_UBUS = {"最高母线电压", "母线电压", "供电电压", "Ubus"};
-    private static final String[] A_POLE_PITCH = {"电磁周期", "极距"};
-    private static final String[] A_MAG_FORCE = {"磁吸力"};
-    private static final String[] A_MOVER_MASS = {"线圈质量", "动子质量"};
-    private static final String[] A_COIL_LENGTH = {"线圈长度"};
-    private static final String[] A_TRACK_MASS = {"磁轨质量"};
-    private static final String[] A_MAX_SPEED_PEAK_L = {"最高速度 @峰值推力", "峰值最高速度"};
-    private static final String[] A_MAX_SPEED_CONT_L = {"最高速度 @持续推力", "持续最高速度"};
+    // 中文写法 + 英文/缩写，覆盖国内外样册常见排版
+    private static final String[] A_FORCE_CONT = {
+            "持续推力", "连续推力", "额定推力", "持续力", "连续力",
+            "Continuous force", "Cont. force", "F_cont", "Fcont", "Fc", "Rated force"
+    };
+    private static final String[] A_FORCE_PEAK = {
+            "峰值推力", "最大推力", "峰值力",
+            "Peak force", "Max. force", "F_peak", "Fpeak", "Fp"
+    };
+    private static final String[] A_KF = {
+            "力常数", "推力常数", "推力系数",
+            "Force constant", "Force sensitivity", "Kf", "K_f"
+    };
+    private static final String[] A_KE = {
+            "反电势常数", "反电动势常数", "反电势", "Back EMF",
+            "Back EMF constant", "Voltage constant", "Ke", "K_e", "Kbemf"
+    };
+    private static final String[] A_KM = {"电机常数", "Motor constant", "Km", "K_m"};
+    private static final String[] A_R25 = {
+            "相间电阻", "线间电阻", "电阻", "相电阻", "R25",
+            "Phase resistance", "Resistance", "R_phase", "Rph"
+    };
+    private static final String[] A_L = {
+            "相间电感", "线间电感", "电感",
+            "Phase inductance", "Inductance", "L_phase", "Lph"
+    };
+    private static final String[] A_TE = {"电气时间常数", "Electrical time constant", "Te"};
+    private static final String[] A_ICONT = {
+            "持续电流", "连续电流", "额定电流", "Icont",
+            "Continuous current", "Cont. current", "I_cont", "Icont", "Ic", "Rated current"
+    };
+    private static final String[] A_IPEAK = {
+            "峰值电流", "最大电流",
+            "Peak current", "Max. current", "I_peak", "Ipeak", "Ip"
+    };
+    private static final String[] A_PN = {"持续热功率", "热功率", "Thermal power", "Pn", "P_n"};
+    private static final String[] A_TMAX = {
+            "最高线圈温度", "最高温度", "最大温度", "Tmax",
+            "Max. coil temp", "Max coil temperature", "T_max", "Max. temperature"
+    };
+    private static final String[] A_KTH = {
+            "热耗散常数", "散热常数", "热阻",
+            "Thermal resistance", "Thermal dissipation", "Kth", "R_th"
+    };
+    private static final String[] A_UBUS = {
+            "最高母线电压", "母线电压", "供电电压", "Ubus",
+            "Bus voltage", "DC bus voltage", "U_bus", "Vdc", "Supply voltage"
+    };
+    private static final String[] A_POLE_PITCH = {"电磁周期", "极距", "Pole pitch", "Pole-pitch"};
+    private static final String[] A_MAG_FORCE = {"磁吸力", "Magnetic attraction", "Attractive force"};
+    private static final String[] A_MOVER_MASS = {
+            "线圈质量", "动子质量", "Mover mass", "Moving mass", "Forcer mass"
+    };
+    private static final String[] A_COIL_LENGTH = {"线圈长度", "Coil length", "Forcer length"};
+    private static final String[] A_TRACK_MASS = {"磁轨质量", "Track mass", "Magnet track mass"};
+    private static final String[] A_MAX_SPEED_PEAK_L = {
+            "最高速度 @峰值推力", "峰值最高速度",
+            "Max. speed @peak", "Peak max speed", "V_max_peak"
+    };
+    private static final String[] A_MAX_SPEED_CONT_L = {
+            "最高速度 @持续推力", "持续最高速度",
+            "Max. speed @cont", "Cont. max speed", "V_max_cont"
+    };
     // 力矩独有
-    private static final String[] A_TORQUE_CONT = {"持续转矩", "连续转矩", "额定转矩"};
-    private static final String[] A_TORQUE_PEAK = {"峰值转矩", "最大转矩"};
-    private static final String[] A_KT = {"转矩常数", "力矩常数"};
-    private static final String[] A_POLES = {"极数"};
-    private static final String[] A_TOTAL_MASS = {"总质量"};
-    private static final String[] A_INERTIA = {"转动惯量"};
-    private static final String[] A_MAX_SPEED_PEAK_T = {"最高转速 @峰值转矩", "峰值最高转速"};
-    private static final String[] A_MAX_SPEED_CONT_T = {"最高转速 @持续转矩", "持续最高转速"};
+    private static final String[] A_TORQUE_CONT = {
+            "持续转矩", "连续转矩", "额定转矩",
+            "Continuous torque", "Cont. torque", "T_cont", "Tcont", "Rated torque"
+    };
+    private static final String[] A_TORQUE_PEAK = {
+            "峰值转矩", "最大转矩",
+            "Peak torque", "Max. torque", "T_peak", "Tpeak", "Tp"
+    };
+    private static final String[] A_KT = {
+            "转矩常数", "力矩常数",
+            "Torque constant", "Kt", "K_t"
+    };
+    private static final String[] A_POLES = {"极数", "Poles", "Pole count", "Number of poles"};
+    private static final String[] A_TOTAL_MASS = {"总质量", "Total mass"};
+    private static final String[] A_INERTIA = {"转动惯量", "Moment of inertia", "Inertia", "J"};
+    private static final String[] A_MAX_SPEED_PEAK_T = {
+            "最高转速 @峰值转矩", "峰值最高转速",
+            "Max. speed @peak", "Peak max speed", "N_max_peak"
+    };
+    private static final String[] A_MAX_SPEED_CONT_T = {
+            "最高转速 @持续转矩", "持续最高转速",
+            "Max. speed @cont", "Cont. max speed", "N_max_cont"
+    };
     // 音圈独有
-    private static final String[] A_STROKE = {"行程"};
-    private static final String[] A_CORE_MASS = {"铁芯质量"};
-    private static final String[] A_GAP = {"运动间隙"};
+    private static final String[] A_STROKE = {"行程", "Stroke", "Travel"};
+    private static final String[] A_CORE_MASS = {"铁芯质量", "Core mass"};
+    private static final String[] A_GAP = {"运动间隙", "Gap", "Air gap", "Moving gap"};
 
     private static final MotorTypeTemplate LINEAR = new MotorTypeTemplate(
             MotorType.LINEAR,

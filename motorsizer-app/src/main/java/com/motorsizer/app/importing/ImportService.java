@@ -93,7 +93,17 @@ public class ImportService {
 
         ImportJob job = new ImportJob(jobId, JobStatus.UPLOADED, Instant.now(), files, pages, List.of());
         store.save(job);
-        return job;
+
+        // 上传即识别：对所有页面自动解析，避免用户逐页手动点「解析」。
+        // 单页解析失败不影响其他页；最终返回反映解析后状态的 job。
+        for (ImportPage page : pages) {
+            try {
+                recognizePage(jobId, page.pageId());
+            } catch (Exception ex) {
+                log.warn("自动解析页面失败: {} {} ({})", jobId, page.pageId(), ex.getMessage());
+            }
+        }
+        return store.read(jobId).orElse(job);
     }
 
     // ---------------------------------------------------------------- I2 列表
