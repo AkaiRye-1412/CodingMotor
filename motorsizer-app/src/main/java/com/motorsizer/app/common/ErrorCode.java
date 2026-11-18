@@ -16,7 +16,14 @@ public enum ErrorCode {
     MOTOR_TYPE_MISMATCH(HttpStatus.BAD_REQUEST, "规格结构与电机类型不匹配"),
 
     REPORT_NO_PLAN(HttpStatus.BAD_REQUEST, "提交的方案数为 0"),
-    REPORT_ALL_UNCOMPUTABLE(HttpStatus.BAD_REQUEST, "全部方案都无法计算");
+    REPORT_ALL_UNCOMPUTABLE(HttpStatus.BAD_REQUEST, "全部方案都无法计算"),
+
+    IMPORT_JOB_NOT_FOUND(HttpStatus.NOT_FOUND, "导入任务不存在或已清理"),
+    IMPORT_PAGE_NOT_FOUND(HttpStatus.NOT_FOUND, "页面不存在"),
+    IMPORT_DRAFT_NOT_FOUND(HttpStatus.NOT_FOUND, "草稿不存在"),
+    IMPORT_FILE_REJECTED(HttpStatus.BAD_REQUEST, "文件类型/大小/数量不合法"),
+    IMPORT_OCR_REQUIRED(HttpStatus.BAD_REQUEST, "该页无文本层，需要 OCR 组件（后续版本）"),
+    IMPORT_NOTHING_TO_COMMIT(HttpStatus.BAD_REQUEST, "没有勾选任何草稿");
 
     private final HttpStatus httpStatus;
     private final String defaultMessage;

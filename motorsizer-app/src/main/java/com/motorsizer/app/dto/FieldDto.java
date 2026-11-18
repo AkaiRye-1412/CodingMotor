@@ -10,5 +10,6 @@ public record FieldDto(
         String unit,
         boolean required,
         BigDecimal factor,
-        List<String> display) {
+        List<String> display,
+        List<String> aliases) {
 }

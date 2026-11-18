@@ -12,6 +12,8 @@ export interface FieldSpec {
   /** 录入单位 → 内部单位换算系数（音圈质量 0.001）。 */
   factor: number
   display: FieldDisplay[]
+  /** 样册识别用别名（06 §6 Q2，随 A1 下发）；旧前端忽略此字段。 */
+  aliases?: string[]
 }
 
 export interface FieldGroup {
