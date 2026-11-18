@@ -11,5 +11,6 @@ public record FieldDto(
         boolean required,
         BigDecimal factor,
         List<String> display,
-        List<String> aliases) {
+        List<String> aliases,
+        String symbol) {
 }

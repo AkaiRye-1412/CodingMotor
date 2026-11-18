@@ -22,22 +22,27 @@ import java.util.Map;
 public class FieldDictionary {
 
     /** 单条匹配项：归一化文本 → (类型, key)。 */
-    public record Entry(MotorType type, String key, String unit, double factor, boolean required) {
+    public record Entry(MotorType type, String key, String unit, double factor, boolean required, String symbol) {
     }
 
     private final List<Entry> allEntries = new ArrayList<>();
     /** 归一化文本 → 命中的 entries（同一文本可能在多类型命中）。 */
     private final Map<String, List<Entry>> index = new HashMap<>();
+    /** 符号（如 Tcn/Kt/R25）→ entries。符号是样册参数表「符号」列的精确键。 */
+    private final Map<String, List<Entry>> symbolIndex = new HashMap<>();
 
     public FieldDictionary() {
         for (MotorType type : MotorCatalogTemplates.typeOrder()) {
             MotorTypeTemplate tpl = MotorCatalogTemplates.of(type);
             for (MotorField field : tpl.fields()) {
                 Entry entry = new Entry(type, field.key(), field.unit(),
-                        field.factor().doubleValue(), field.required());
+                        field.factor().doubleValue(), field.required(), field.symbol());
                 register(normalize(field.label()), entry);
                 for (String alias : field.aliases()) {
                     register(normalize(alias), entry);
+                }
+                if (field.symbol() != null && !field.symbol().isBlank()) {
+                    symbolIndex.computeIfAbsent(field.symbol(), k -> new ArrayList<>()).add(entry);
                 }
             }
         }
@@ -49,6 +54,12 @@ public class FieldDictionary {
         }
         allEntries.add(entry);
         index.computeIfAbsent(normalized, k -> new ArrayList<>()).add(entry);
+    }
+
+    /** 按符号精确匹配字段（符号是样册「符号」列，优先级最高）。找不到返回 null。 */
+    public List<Entry> matchSymbol(String symbol) {
+        if (symbol == null) return null;
+        return symbolIndex.get(symbol);
     }
 
     /** 在一行文本里查找命中的字段：返回 (归一化匹配文本, entry) 中匹配文本最长者。 */

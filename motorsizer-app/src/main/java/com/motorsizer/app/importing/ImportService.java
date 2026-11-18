@@ -46,16 +46,18 @@ public class ImportService {
     private final PageRecognizer recognizer;
     private final MotorSpecValidator validator;
     private final MotorService motorService;
+    private final ImportExcelExporter excelExporter;
 
     public ImportService(ImportStore store, ImportConfig config, PdfTextExtractor pdfExtractor,
                          PageRecognizer recognizer, MotorSpecValidator validator,
-                         MotorService motorService) {
+                         MotorService motorService, ImportExcelExporter excelExporter) {
         this.store = store;
         this.config = config;
         this.pdfExtractor = pdfExtractor;
         this.recognizer = recognizer;
         this.validator = validator;
         this.motorService = motorService;
+        this.excelExporter = excelExporter;
     }
 
     // ---------------------------------------------------------------- I1 创建
@@ -318,6 +320,13 @@ public class ImportService {
         List<Draft> drafts = job.drafts().stream().map(d -> d.draftId().equals(draftId) ? updated : d).toList();
         store.save(job.withDrafts(drafts));
         return updated;
+    }
+
+    // ---------------------------------------------------------------- 导出 Excel
+
+    public byte[] exportExcel(String jobId) throws IOException {
+        ImportJob job = requireJob(jobId);
+        return excelExporter.export(job.drafts());
     }
 
     // ---------------------------------------------------------------- 启动清理

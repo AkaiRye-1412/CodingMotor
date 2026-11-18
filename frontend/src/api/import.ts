@@ -87,5 +87,19 @@ export function setDraftChecked(jobId: string, draftId: string, checked: boolean
   })
 }
 
+/** 导出识别草稿为 Excel（xlsx 下载）。 */
+export async function exportImportJob(jobId: string): Promise<void> {
+  const response = await client.get(`/imports/${jobId}/export`, { responseType: 'blob' })
+  const blob = response.data as Blob
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `import-${jobId}.xlsx`
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+}
+
 // http.ts 导出的 ApiEnvelope 类型在此文件按需内联引用
 import type { ApiEnvelope } from '@/types/api'

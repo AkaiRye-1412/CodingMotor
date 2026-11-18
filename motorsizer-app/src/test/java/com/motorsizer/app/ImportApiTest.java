@@ -26,11 +26,13 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -207,6 +209,39 @@ class ImportApiTest {
         mockMvc.perform(get("/api/imports"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data[0].jobId").exists());
+    }
+
+    @Test
+    void exportReturnsXlsx() throws Exception {
+        byte[] pdf = buildDatasheetPdf(List.of(
+                "型号: ADR-EXP-001",
+                "持续推力 120 N",
+                "峰值推力 480 N",
+                "力常数 5.6 N/Arms",
+                "反电势常数 3.9",
+                "相间电阻 8.8",
+                "持续电流 2.14",
+                "峰值电流 8.57",
+                "最高线圈温度 110",
+                "热耗散常数 1.1",
+                "最高母线电压 400"));
+        String jobId = createJob(pdf, "exp.pdf");
+
+        MvcResult result = mockMvc.perform(get("/api/imports/{jobId}/export", jobId))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type",
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .andExpect(header().string("Content-Disposition",
+                        org.hamcrest.Matchers.containsString("import-" + jobId + ".xlsx")))
+                .andReturn();
+
+        byte[] body = result.getResponse().getContentAsByteArray();
+        // xlsx 是 zip 容器，魔数 PK
+        assertThat(body.length).isGreaterThan(100);
+        assertThat(body[0]).isEqualTo((byte) 'P');
+        assertThat(body[1]).isEqualTo((byte) 'K');
+
+        mockMvc.perform(delete("/api/imports/{jobId}", jobId)).andExpect(status().isOk());
     }
 
     // ---------------------------------------------------------------- 夹具

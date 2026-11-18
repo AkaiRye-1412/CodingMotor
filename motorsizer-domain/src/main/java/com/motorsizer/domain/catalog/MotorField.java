@@ -13,6 +13,8 @@ import java.util.List;
  * @param factor   录入单位 → 内部单位的换算系数
  * @param display  出现位置：{@code detail}（M8 参数表）/{@code form}（M10 录入表单）
  * @param aliases  样册识别用的别名（Q2 裁定，随 A1 下发）；可为空。样册常见变体如 R25 ↔ 相间电阻
+ * @param symbol   样册参数表里的物理符号（如 Tcn/Kt/R25），是识别的一等匹配键（优先级高于别名）。
+ *                 样册「符号」列稳定唯一，比中文标签（带角标/括号）更好匹配。可为空。
  */
 public record MotorField(
         String key,
@@ -21,7 +23,8 @@ public record MotorField(
         boolean required,
         BigDecimal factor,
         List<String> display,
-        List<String> aliases) {
+        List<String> aliases,
+        String symbol) {
 
     public static final String DISPLAY_DETAIL = "detail";
     public static final String DISPLAY_FORM = "form";
@@ -44,6 +47,11 @@ public record MotorField(
 
     /** 返回带别名的副本（用于 K2 模板构造期链式标注，06 §6 Q2）。 */
     public MotorField withAliases(String... alias) {
-        return new MotorField(key, label, unit, required, factor, display, List.of(alias));
+        return new MotorField(key, label, unit, required, factor, display, List.of(alias), symbol);
+    }
+
+    /** 返回带符号的副本（用于 K2 模板构造期链式标注符号）。 */
+    public MotorField withSymbol(String symbolValue) {
+        return new MotorField(key, label, unit, required, factor, display, aliases, symbolValue);
     }
 }

@@ -9,6 +9,7 @@ import {
   deleteDraft,
   deleteImportJob,
   editDraft,
+  exportImportJob,
   getImportJob,
   listImportJobs,
   recognizePage,
@@ -276,6 +277,16 @@ async function cancelJob() {
     reset()
   } catch (error) {
     ElMessage.error(error instanceof ApiError ? error.message : '删除失败')
+  }
+}
+
+async function exportExcel() {
+  if (!job.value) return
+  try {
+    await exportImportJob(job.value.jobId)
+    ElMessage.success('已导出 Excel')
+  } catch (error) {
+    ElMessage.error(error instanceof ApiError ? error.message : '导出失败')
   }
 }
 
@@ -554,6 +565,7 @@ function confidenceType(c: number): 'success' | 'warning' | 'danger' {
 
       <div class="step-actions">
         <el-button @click="step = 2">页面核对</el-button>
+        <el-button @click="exportExcel">导出 Excel</el-button>
         <el-button @click="cancelJob">删除任务</el-button>
         <el-button type="primary" :loading="busy" :disabled="checkedCount === 0" @click="commit">
           提交勾选（{{ checkedCount }}）

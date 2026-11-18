@@ -53,6 +53,7 @@ public class MotorTemplateService {
                 field.required(),
                 field.factor(),
                 field.display(),
-                field.aliases());
+                field.aliases(),
+                field.symbol());
     }
 }

@@ -123,6 +123,18 @@ public class ImportController {
         return ApiResponse.ok(service.setChecked(jobId, draftId, body.checked()));
     }
 
+    /** 导出识别草稿为 Excel（xlsx 下载，人工核对后回填）。 */
+    @GetMapping("/{jobId}/export")
+    public ResponseEntity<byte[]> export(@PathVariable String jobId) throws IOException {
+        byte[] bytes = service.exportExcel(jobId);
+        return ResponseEntity.ok()
+                .header("Content-Type",
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                .header("Content-Disposition",
+                        "attachment; filename=import-" + jobId + ".xlsx")
+                .body(bytes);
+    }
+
     /** I13 请求体。 */
     public record CheckedRequest(boolean checked) {
     }

@@ -36,32 +36,32 @@ public final class MotorCatalogTemplates {
 
     /** 表单 + 参数表都显示（选填）。 */
     private static MotorField both(String key, String label, String unit) {
-        return new MotorField(key, label, unit, false, ONE, DETAIL_AND_FORM, NO_ALIASES);
+        return new MotorField(key, label, unit, false, ONE, DETAIL_AND_FORM, NO_ALIASES, null);
     }
 
     /** 表单 + 参数表都显示（必填）。 */
     private static MotorField bothRequired(String key, String label, String unit) {
-        return new MotorField(key, label, unit, true, ONE, DETAIL_AND_FORM, NO_ALIASES);
+        return new MotorField(key, label, unit, true, ONE, DETAIL_AND_FORM, NO_ALIASES, null);
     }
 
     /** 仅录入表单显示（选填）。 */
     private static MotorField formOnly(String key, String label, String unit) {
-        return new MotorField(key, label, unit, false, ONE, FORM_ONLY, NO_ALIASES);
+        return new MotorField(key, label, unit, false, ONE, FORM_ONLY, NO_ALIASES, null);
     }
 
     /** 仅录入表单显示（必填）。 */
     private static MotorField formOnlyRequired(String key, String label, String unit) {
-        return new MotorField(key, label, unit, true, ONE, FORM_ONLY, NO_ALIASES);
+        return new MotorField(key, label, unit, true, ONE, FORM_ONLY, NO_ALIASES, null);
     }
 
     /** 仅录入表单显示，并按 factor 把录入单位换算为内部单位。 */
     private static MotorField formOnly(String key, String label, String unit, BigDecimal factor) {
-        return new MotorField(key, label, unit, false, factor, FORM_ONLY, NO_ALIASES);
+        return new MotorField(key, label, unit, false, factor, FORM_ONLY, NO_ALIASES, null);
     }
 
     /** 表单 + 参数表都显示，并按 factor 把录入单位换算为内部单位。 */
     private static MotorField both(String key, String label, String unit, BigDecimal factor) {
-        return new MotorField(key, label, unit, false, factor, DETAIL_AND_FORM, NO_ALIASES);
+        return new MotorField(key, label, unit, false, factor, DETAIL_AND_FORM, NO_ALIASES, null);
     }
 
     // 直线 / 力矩共用的别名（同 key 在两套模板里语义一致，C-B 不变量）
@@ -166,20 +166,20 @@ public final class MotorCatalogTemplates {
             List.of(),
             List.of(
                     new MotorFieldGroup(GROUP_PERFORMANCE, false, List.of(
-                            bothRequired("forceCont", "持续推力", "N").withAliases(A_FORCE_CONT),
-                            bothRequired("forcePeak", "峰值推力", "N").withAliases(A_FORCE_PEAK),
-                            bothRequired("kf", "力常数 ±10%", "N/Arms").withAliases(A_KF),
-                            bothRequired("ke", "反电势常数 ±10%", "Vpeak/(m/s)").withAliases(A_KE),
-                            both("km", "电机常数 @25°C", "N/SqRt(W)").withAliases(A_KM),
-                            bothRequired("r25", "相间电阻 @25°C ±10%", "Ω").withAliases(A_R25),
-                            both("l", "相间电感 ±30%", "mH").withAliases(A_L),
-                            formOnly("te", "电气时间常数", "ms").withAliases(A_TE),
-                            bothRequired("iCont", "持续电流 ({cool}) @100°C", "Arms").withAliases(A_ICONT),
-                            bothRequired("iPeak", "峰值电流", "Arms").withAliases(A_IPEAK),
-                            formOnly("pn", "持续热功率 ({cool}) @100°C", "W").withAliases(A_PN),
-                            formOnlyRequired("tMax", "最高线圈温度", "°C").withAliases(A_TMAX),
-                            formOnlyRequired("kth", "热耗散常数 ({cool})", "W/°C").withAliases(A_KTH),
-                            formOnlyRequired("uBus", "最高母线电压", "Vdc").withAliases(A_UBUS),
+                            bothRequired("forceCont", "持续推力", "N").withAliases(A_FORCE_CONT).withSymbol("Fcn"),
+                            bothRequired("forcePeak", "峰值推力", "N").withAliases(A_FORCE_PEAK).withSymbol("Fpk"),
+                            bothRequired("kf", "力常数 ±10%", "N/Arms").withAliases(A_KF).withSymbol("Kf"),
+                            bothRequired("ke", "反电势常数 ±10%", "Vpeak/(m/s)").withAliases(A_KE).withSymbol("Ke"),
+                            both("km", "电机常数 @25°C", "N/SqRt(W)").withAliases(A_KM).withSymbol("Km"),
+                            bothRequired("r25", "相间电阻 @25°C ±10%", "Ω").withAliases(A_R25).withSymbol("R25"),
+                            both("l", "相间电感 ±30%", "mH").withAliases(A_L).withSymbol("L"),
+                            formOnly("te", "电气时间常数", "ms").withAliases(A_TE).withSymbol("Te"),
+                            bothRequired("iCont", "持续电流 ({cool}) @100°C", "Arms").withAliases(A_ICONT).withSymbol("Icn"),
+                            bothRequired("iPeak", "峰值电流", "Arms").withAliases(A_IPEAK).withSymbol("Ipk"),
+                            formOnly("pn", "持续热功率 ({cool}) @100°C", "W").withAliases(A_PN).withSymbol("Pcn"),
+                            formOnlyRequired("tMax", "最高线圈温度", "°C").withAliases(A_TMAX).withSymbol("Tmax"),
+                            formOnlyRequired("kth", "热耗散常数 ({cool})", "W/°C").withAliases(A_KTH).withSymbol("Kth"),
+                            formOnlyRequired("uBus", "最高母线电压", "Vdc").withAliases(A_UBUS).withSymbol("Ubus"),
                             formOnly("polePitch", "电磁周期", "mm").withAliases(A_POLE_PITCH),
                             formOnly("magForce", "磁吸力", "N").withAliases(A_MAG_FORCE)
                     )),
@@ -204,24 +204,24 @@ public final class MotorCatalogTemplates {
             List.of("标准", "特殊"),
             List.of(
                     new MotorFieldGroup(GROUP_PERFORMANCE, false, List.of(
-                            bothRequired("torqueCont", "持续转矩 @100°C", "Nm").withAliases(A_TORQUE_CONT),
-                            bothRequired("torquePeak", "峰值转矩", "Nm").withAliases(A_TORQUE_PEAK),
-                            bothRequired("kt", "转矩常数 ±10%", "Nm/Arms").withAliases(A_KT),
-                            bothRequired("ke", "反电势常数 ±10%", "Vpeak/rpm").withAliases(A_KE),
-                            both("km", "电机常数 @25°C", "Nm/SqRt(W)").withAliases(A_KM),
-                            bothRequired("r25", "相间电阻 @25°C ±10%", "Ω").withAliases(A_R25),
-                            both("l", "相间电感 ±20%", "mH").withAliases(A_L),
-                            formOnly("te", "电气时间常数", "ms").withAliases(A_TE),
-                            bothRequired("iCont", "持续电流 @100°C", "Arms").withAliases(A_ICONT),
-                            bothRequired("iPeak", "峰值电流", "Arms").withAliases(A_IPEAK),
-                            formOnly("pn", "持续热功率 @100°C", "W").withAliases(A_PN),
-                            formOnlyRequired("tMax", "最高线圈温度", "°C").withAliases(A_TMAX),
-                            formOnlyRequired("kth", "热耗散常数", "W/°C").withAliases(A_KTH),
-                            formOnlyRequired("uBus", "最高母线电压", "Vdc").withAliases(A_UBUS),
-                            formOnly("poles", "极数", "-").withAliases(A_POLES),
+                            bothRequired("torqueCont", "持续转矩 @100°C", "Nm").withAliases(A_TORQUE_CONT).withSymbol("Tcn"),
+                            bothRequired("torquePeak", "峰值转矩", "Nm").withAliases(A_TORQUE_PEAK).withSymbol("Tpk"),
+                            bothRequired("kt", "转矩常数 ±10%", "Nm/Arms").withAliases(A_KT).withSymbol("Kt"),
+                            bothRequired("ke", "反电势常数 ±10%", "Vpeak/rpm").withAliases(A_KE).withSymbol("Ke"),
+                            both("km", "电机常数 @25°C", "Nm/SqRt(W)").withAliases(A_KM).withSymbol("Km"),
+                            bothRequired("r25", "相间电阻 @25°C ±10%", "Ω").withAliases(A_R25).withSymbol("R25"),
+                            both("l", "相间电感 ±20%", "mH").withAliases(A_L).withSymbol("L"),
+                            formOnly("te", "电气时间常数", "ms").withAliases(A_TE).withSymbol("Te"),
+                            bothRequired("iCont", "持续电流 @100°C", "Arms").withAliases(A_ICONT).withSymbol("Icn"),
+                            bothRequired("iPeak", "峰值电流", "Arms").withAliases(A_IPEAK).withSymbol("Ipk"),
+                            formOnly("pn", "持续热功率 @100°C", "W").withAliases(A_PN).withSymbol("Pcn"),
+                            formOnlyRequired("tMax", "最高线圈温度", "°C").withAliases(A_TMAX).withSymbol("Tmax"),
+                            formOnlyRequired("kth", "热耗散常数", "W/°C").withAliases(A_KTH).withSymbol("Kth"),
+                            formOnlyRequired("uBus", "最高母线电压", "Vdc").withAliases(A_UBUS).withSymbol("Ubus"),
+                            formOnly("poles", "极数", "-").withAliases(A_POLES).withSymbol("2p"),
                             // 力矩样册均提供双转速阈值，故为必填（与直线/音圈不同）
-                            formOnlyRequired("maxSpeedPeak", "最高转速 @峰值转矩", "rpm").withAliases(A_MAX_SPEED_PEAK_T),
-                            formOnlyRequired("maxSpeedCont", "最高转速 @持续转矩", "rpm").withAliases(A_MAX_SPEED_CONT_T)
+                            formOnlyRequired("maxSpeedPeak", "最高转速 @峰值转矩", "rpm").withAliases(A_MAX_SPEED_PEAK_T).withSymbol("Ωmax"),
+                            formOnlyRequired("maxSpeedCont", "最高转速 @持续转矩", "rpm").withAliases(A_MAX_SPEED_CONT_T).withSymbol("Ωmax")
                     )),
                     new MotorFieldGroup(GROUP_MECHANICAL, false, List.of(
                             formOnly("totalMass", "总质量", "kg").withAliases(A_TOTAL_MASS),
@@ -246,20 +246,20 @@ public final class MotorCatalogTemplates {
             List.of(
                     new MotorFieldGroup(GROUP_PERFORMANCE, false, List.of(
                             both("stroke", "行程", "mm").withAliases(A_STROKE),
-                            bothRequired("forceCont", "持续推力 @100°C", "N").withAliases(A_FORCE_CONT),
-                            bothRequired("forcePeak", "峰值推力", "N").withAliases(A_FORCE_PEAK),
-                            bothRequired("kf", "力常数 ±10%", "N/A").withAliases(A_KF),
-                            bothRequired("ke", "反电势常数 ±10%", "V/(m/s)").withAliases(A_KE),
-                            both("km", "电机常数 @25°C", "N/SqRt(W)").withAliases(A_KM),
-                            bothRequired("r25", "电阻 @25°C ±10%", "Ω").withAliases(A_R25),
-                            both("l", "电感 ±20%", "mH").withAliases(A_L),
-                            formOnly("te", "电气时间常数", "ms").withAliases(A_TE),
-                            bothRequired("iCont", "持续电流 @100°C", "A").withAliases(A_ICONT),
-                            bothRequired("iPeak", "峰值电流", "A").withAliases(A_IPEAK),
-                            formOnly("pn", "持续热功率 @100°C", "W").withAliases(A_PN),
-                            formOnlyRequired("tMax", "最高线圈温度", "°C").withAliases(A_TMAX),
-                            formOnlyRequired("kth", "热耗散常数", "W/°C").withAliases(A_KTH),
-                            formOnlyRequired("uBus", "最高电压", "Vdc").withAliases(A_UBUS)
+                            bothRequired("forceCont", "持续推力 @100°C", "N").withAliases(A_FORCE_CONT).withSymbol("Fcn"),
+                            bothRequired("forcePeak", "峰值推力", "N").withAliases(A_FORCE_PEAK).withSymbol("Fpk"),
+                            bothRequired("kf", "力常数 ±10%", "N/A").withAliases(A_KF).withSymbol("Kf"),
+                            bothRequired("ke", "反电势常数 ±10%", "V/(m/s)").withAliases(A_KE).withSymbol("Ke"),
+                            both("km", "电机常数 @25°C", "N/SqRt(W)").withAliases(A_KM).withSymbol("Km"),
+                            bothRequired("r25", "电阻 @25°C ±10%", "Ω").withAliases(A_R25).withSymbol("R25"),
+                            both("l", "电感 ±20%", "mH").withAliases(A_L).withSymbol("L"),
+                            formOnly("te", "电气时间常数", "ms").withAliases(A_TE).withSymbol("Te"),
+                            bothRequired("iCont", "持续电流 @100°C", "A").withAliases(A_ICONT).withSymbol("Icn"),
+                            bothRequired("iPeak", "峰值电流", "A").withAliases(A_IPEAK).withSymbol("Ipk"),
+                            formOnly("pn", "持续热功率 @100°C", "W").withAliases(A_PN).withSymbol("Pcn"),
+                            formOnlyRequired("tMax", "最高线圈温度", "°C").withAliases(A_TMAX).withSymbol("Tmax"),
+                            formOnlyRequired("kth", "热耗散常数", "W/°C").withAliases(A_KTH).withSymbol("Kth"),
+                            formOnlyRequired("uBus", "最高电压", "Vdc").withAliases(A_UBUS).withSymbol("Ubus")
                     )),
                     new MotorFieldGroup(GROUP_MECHANICAL, false, List.of(
                             // 音圈机械参数按 g 录入，内部统一按 kg 计算（第 63 轮 Q4）

@@ -171,4 +171,53 @@ class PageRecognizerTest {
         // 命中少 → 置信度低，但不应阻断（Q5：仅提醒不阻断）
         assertThat(draft.confidence()).isLessThan(0.6);
     }
+
+    @Test
+    void torqueSymbolColumnsMatchBySymbolAndAlignColumns() {
+        // 模拟真实力矩样册（AXD 系列）格式：参数名 + 符号 + 单位 + 串联值 + 并联值
+        // 只抓必填字段；符号是一等键；多列按「串联/并联」对齐
+        List<String> lines = List.of(
+                "型号: AXD120-71",
+                "串联  并联",
+                "持续转矩(自冷)@100℃ Tcn Nm 3.4 3.4",
+                "峰值转矩 Tpk Nm 10.0 10.0",
+                "转矩常数±10% Kt Nm/Arms 3.0 1.5",
+                "反电势常数±10% Ke Vpeak/rpm 0.26 0.13",
+                "相间电阻@25℃±10% R25 Ω 15.2 3.8",
+                "持续电流(自冷)@100℃ Icn Arms 1.1 2.2",
+                "峰值电流 Ipk Arms 3.9 7.8",
+                "最高线圈温度 Tmax °C 100 100",
+                "热耗散常数(自冷) Kth W/°C 0.5 0.5",
+                "最高母线电压 Ubus Vdc 600 600",
+                "极数 2p - 14 14",
+                "最高转速@持续转矩 Ωmax rpm 1700 2000",
+                "最高转速@峰值转矩 Ωmax rpm 1400 2000");
+
+        PageRecognizer.Result result = recognizer.recognize(new PageText(lines), "f1p1", 1, "AXD.pdf");
+
+        assertThat(result.status()).isEqualTo(PageStatus.RECOGNIZED);
+        // 多列对照：串联 + 并联 两条草稿
+        assertThat(result.drafts()).hasSize(2);
+        Draft series = result.drafts().get(0);
+        Draft parallel = result.drafts().get(1);
+        assertThat(series.request().modelName()).isEqualTo("AXD120-71");
+        assertThat(series.request().motorType()).isEqualTo("torque");
+        assertThat(series.request().configName()).isEqualTo("串联");
+        assertThat(parallel.request().configName()).isEqualTo("并联");
+
+        // 串联列值（第 4 列）
+        assertThat(series.request().spec().get("torqueCont")).isEqualTo(3.4);
+        assertThat(series.request().spec().get("kt")).isEqualTo(3.0);
+        assertThat(series.request().spec().get("r25")).isEqualTo(15.2);
+        assertThat(series.request().spec().get("iCont")).isEqualTo(1.1);
+        assertThat(series.request().spec().get("uBus")).isEqualTo(600.0);
+        // 并联列值（第 5 列）
+        assertThat(parallel.request().spec().get("torqueCont")).isEqualTo(3.4);
+        assertThat(parallel.request().spec().get("kt")).isEqualTo(1.5);
+        assertThat(parallel.request().spec().get("r25")).isEqualTo(3.8);
+        assertThat(parallel.request().spec().get("iCont")).isEqualTo(2.2);
+
+        // 关键：符号列匹配后，不应把 @25℃ 的 25 当 r25 值；r25 应取符号后的 15.2/3.8
+        assertThat(series.request().spec().get("r25")).isNotEqualTo(25.0);
+    }
 }
