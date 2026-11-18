@@ -32,3 +32,6 @@ packaging/windows/icon-src/
 packaging/windows/loader/lib/
 packaging/windows/loader/MotorSizerLoader.exe
 packaging/windows/loader/WebView2Loader.dll
+
+# WorkBuddy 项目数据（本地记忆，不入库）
+.workbuddy/
