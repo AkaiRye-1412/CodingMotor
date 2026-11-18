@@ -7,6 +7,7 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.List;
 
@@ -44,6 +45,13 @@ public class GlobalExceptionHandler {
                 .body(ApiResponse.error(ErrorCode.COMMON_VALIDATION_FAILED.name(),
                         "请求体格式错误",
                         ErrorsPayload.of(List.of(new FieldError("body", "请求体无法解析")))));
+    }
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ApiResponse<ErrorsPayload>> handleNoResource(NoResourceFoundException ex) {
+        // 静态资源缺失（如浏览器自动请求 favicon.ico）是常态，不计为错误，仅 DEBUG 记录
+        log.debug("静态资源未找到：{}", ex.getResourcePath());
+        return ResponseEntity.notFound().build();
     }
 
     @ExceptionHandler(Exception.class)

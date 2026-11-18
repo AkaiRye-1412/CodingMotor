@@ -1,7 +1,11 @@
 server:
-  # 只监听本机回环（A-3）；打包阶段再接入自动选空闲端口与自动打开浏览器
+  # 只监听本机回环（A-3）；main() 启动时自动探测：8080 空闲则用，被占用改随机端口（AR-11）
   address: 127.0.0.1
   port: 8080
+
+motorsizer:
+  # 打包形态默认启动后自动打开浏览器；dev.bat 里用 vite（5173）时显式关闭
+  open-browser: ${motorsizer.openBrowser:true}
 
 spring:
   application:

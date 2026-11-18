@@ -19,3 +19,11 @@ Thumbs.db
 *.log
 *.mv.db
 *.trace.db
+
+# 打包构建产物（packaging/windows）
+packaging/windows/jre/
+packaging/windows/dist/
+packaging/windows/app-input/
+packaging/windows/deps-analysis/
+packaging/windows/.build-icon/
+packaging/windows/icon-src/
