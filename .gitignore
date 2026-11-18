@@ -27,3 +27,8 @@ packaging/windows/app-input/
 packaging/windows/deps-analysis/
 packaging/windows/.build-icon/
 packaging/windows/icon-src/
+
+# WebView2 loader 构建产物（NuGet DLL + 编译产物，不入库）
+packaging/windows/loader/lib/
+packaging/windows/loader/MotorSizerLoader.exe
+packaging/windows/loader/WebView2Loader.dll

@@ -84,24 +84,29 @@ mvn clean package -DskipFrontend=true
 | S3 `POST /api/calculations` | ✅ 已实现 B1 契约与 13 项接口测试 |
 | 前端 M4 输入 / M6–M9 接线 | ✅ 已接入 B1：双列输入、6 卡片、候选过滤、参数表、应用值、两张曲线 |
 | S4 报告 `POST /api/reports/pdf` | ✅ 已实现：Thymeleaf + OpenHTMLtoPDF + Noto Sans SC，5 项契约测试 + 端到端冒烟 |
-| 启动器与打包（A-3/A-4/AR-11/R-3） | ✅ 已实现：单实例锁、自动空闲端口、自动开浏览器、jpackage 免安装绿色包 |
+| 启动器与打包（A-3/A-4/AR-11/R-3） | ✅ 已实现：单实例锁、自动空闲端口、jpackage 免安装绿色包；双击弹 **WebView2 原生窗口**（非浏览器标签页） |
 | I1–I13 样册识别 | ⏳ 后续；包结构与依赖已就绪 |
 
 > 计算规则只能存在于 `motorsizer-domain`（02 A-1）；前端只做输入规整（钳制、留空即自动、单位换算、显示精度）。
 
 ## 桌面打包
 
-免安装绿色包（R-3 裁定）：`jpackage --type app-image` + jlink 裁剪 JRE，解压双击即用、免管理员权限。
+免安装绿色包（R-3 裁定）：`jpackage --type app-image` + jlink 裁剪 JRE + WebView2 原生窗口 loader。
+双击 `MotorSizer.exe` 弹出**原生 WebView2 窗口**（Edge 内核、无地址栏、独立任务栏图标），不再是浏览器标签页。
 
 ```bash
 # 1. 全量构建（前端 + 后端单体 jar）
 scripts\build.bat
 
-# 2. 打包（需 JDK 17 含 jmods；本机默认探测 D:\develop\jdk-17）
+# 2. 准备 loader（首次）：下载 WebView2 DLL + 编译 loader
+python packaging\windows\loader\download_nuget.py
+python packaging\windows\loader\build_loader.py
+
+# 3. 打包（需 JDK 17 含 jmods；本机默认探测 D:\develop\jdk-17）
 packaging\windows\package.bat
 
-# 3. 冒烟（可选）
+# 4. 冒烟（可选）
 python packaging\windows\smoke.py
 ```
 
-产物：`packaging\windows\dist\MotorSizer\`，双击 `MotorSizer.exe` 启动。首次启动自动建库（H2 文件位于 `%APPDATA%\MotorSizer\data\`）、自动打开浏览器；重复双击受单实例锁保护，会定位既有实例而非起新进程。详见 [packaging/README.md](packaging/README.md)。
+产物：`packaging\windows\dist\MotorSizer\`，双击 `MotorSizer.exe` 弹原生窗口。首次启动自动建库（H2 文件位于 `%APPDATA%\MotorSizer\data\`）；重复双击受单实例锁保护；关闭窗口自动结束后端。`MotorSizerBackend.exe` 为后备入口（浏览器模式）。详见 [packaging/README.md](packaging/README.md)。

@@ -68,14 +68,23 @@ def main():
     print("OK /api/motor-templates: HTTP %d, %d bytes" % (status, len(body)))
 
     if kill:
-        # 只结束 MotorSizer.exe 进程树（jpackage 启动器自带子进程，/T 一并结束；
-        # 不按 java.exe 通配清理，避免误杀本机其他 Java 程序）
+        # MotorSizer.exe 是 loader（WebView2 主入口），/T 结束它的 java 子进程；
+        # 强杀可能不走 loader 的 finally，补一次 java 兜底 + 清锁文件
         subprocess.run(["taskkill", "/IM", "MotorSizer.exe", "/T", "/F"],
                        capture_output=True)
+        subprocess.run(["taskkill", "/IM", "java.exe", "/F"],
+                       capture_output=True)
         time.sleep(1)
-        print("进程已结束，锁端口复位为:", read_lock_port())
+        for f in ["app.lock", "app.port"]:
+            p = os.path.join(os.environ.get("APPDATA", ""), "MotorSizer", f)
+            if os.path.exists(p):
+                try:
+                    os.remove(p)
+                except OSError:
+                    pass
+        print("进程已结束，锁/端口文件已清。")
     else:
-        print("实例保持运行，界面应已自动在浏览器打开。")
+        print("实例保持运行，原生 WebView2 窗口应已弹出（非浏览器标签页）。")
     return 0
 
 
