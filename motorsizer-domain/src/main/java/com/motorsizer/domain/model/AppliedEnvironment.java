@@ -1,0 +1,17 @@
+package com.motorsizer.domain.model;
+
+/**
+ * 实际应用值的环境输入。
+ *
+ * @param ambientTemp   环境温度（°C）；为空按 22 处理
+ * @param supplyVoltage 供电母线电压（Vdc）；为空时不做供电判定
+ * @param tiltDeg       倾斜角（°），仅直线参与重力计算
+ */
+public record AppliedEnvironment(
+        double load,
+        double resist,
+        double dwell,
+        Double ambientTemp,
+        Double supplyVoltage,
+        double tiltDeg) {
+}

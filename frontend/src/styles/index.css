@@ -1,0 +1,502 @@
+/*
+ * 全局样式：以 Element Plus 主题色为基准，保留原型的三列布局、面板结构与信息层级（02 5.2.1）。
+ * 控件皮肤由 Element Plus 提供；本文件只负责页面骨架与面板/指标卡的排版。
+ */
+
+:root {
+  --ms-bg: #f5f7fa;
+  --ms-panel: #ffffff;
+  --ms-panel-head: #eef1f6;
+  --ms-border: #dcdfe6;
+  --ms-border-soft: #ebeef5;
+  --ms-text: #303133;
+  --ms-text-secondary: #606266;
+  --ms-text-dim: #909399;
+  --ms-accent: #409eff;
+  --ms-success: #67c23a;
+  --ms-warning: #e6a23c;
+  --ms-danger: #f56c6c;
+  --ms-theory: #553a96;
+  --ms-applied: #0d7585;
+  --ms-radius: 6px;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--ms-bg);
+  color: var(--ms-text);
+  font-family: "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* ---------- 顶栏 ---------- */
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 8px 14px;
+  background: #25237b;
+  color: #fff;
+  border-bottom: 1px solid #1b1a5e;
+}
+
+.brand-logo {
+  height: 32px;
+  width: auto;
+  display: block;
+}
+
+.tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.tab {
+  padding: 5px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-bottom: none;
+  border-radius: 4px 4px 0 0;
+  background: rgba(255, 255, 255, 0.1);
+  color: #d9ddef;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.tab:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.tab.active {
+  background: #fff;
+  color: #25237b;
+  font-weight: 700;
+  border-color: #fff;
+}
+
+.topbar-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.meta-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #ccd1ea;
+  white-space: nowrap;
+}
+
+.meta-field .el-input,
+.meta-field .el-date-editor {
+  width: 140px;
+}
+
+.topbar-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+}
+
+/* ---------- 工作区：三列布局保持不变 ---------- */
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.workspace {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 310px minmax(400px, 1fr) minmax(400px, 1fr);
+  gap: 12px;
+  padding: 12px;
+  align-items: start;
+  overflow: auto;
+}
+
+.col {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+/* ---------- 面板 ---------- */
+.panel {
+  background: var(--ms-panel);
+  border: 1px solid var(--ms-border);
+  border-radius: var(--ms-radius);
+  overflow: hidden;
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 34px;
+  padding: 6px 12px;
+  background: var(--ms-panel-head);
+  border-bottom: 1px solid var(--ms-border-soft);
+}
+
+.panel-title {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.panel-hint {
+  font-size: 12px;
+  color: var(--ms-text-dim);
+}
+
+.panel-body {
+  padding: 12px;
+}
+
+/* ---------- 指标卡 / 结果区 ---------- */
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.metric-card {
+  border: 1px solid var(--ms-border-soft);
+  border-radius: var(--ms-radius);
+  padding: 8px 10px;
+  background: #fafbfc;
+}
+
+.metric-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ms-text);
+  margin-bottom: 4px;
+}
+
+.metric-value {
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.metric-value.theory {
+  color: var(--ms-theory);
+}
+
+.metric-value.applied {
+  color: var(--ms-applied);
+}
+
+.metric-unit {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ms-text-secondary);
+  margin-left: 4px;
+}
+
+/* ---------- M4 双列表单 ---------- */
+.pair-table {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.pair-head,
+.pair-row {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr) 88px 38px;
+  gap: 6px;
+  align-items: center;
+}
+
+.pair-head {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ms-text-secondary);
+}
+
+.pair-head span:nth-child(3) {
+  text-align: center;
+}
+
+.pair-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ms-text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.req-star {
+  color: var(--ms-danger);
+  font-weight: 700;
+}
+
+.pair-input,
+.pair-number {
+  width: 100%;
+  min-width: 0;
+}
+
+.pair-number .el-input__wrapper {
+  padding-left: 6px;
+  padding-right: 6px;
+}
+
+.pair-result {
+  display: flex;
+  justify-content: center;
+}
+
+.pair-result-value {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ms-text-secondary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.pair-result-value.calc {
+  color: var(--ms-theory);
+  font-weight: 700;
+}
+
+.pair-readonly {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ms-text-secondary);
+  text-align: center;
+}
+
+.pair-unit {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ms-text);
+  white-space: nowrap;
+}
+
+.pair-number .el-input__inner {
+  font-weight: 700;
+  color: var(--ms-text-secondary);
+}
+
+.direction-row .el-radio__label {
+  font-weight: 700;
+  color: var(--ms-text-secondary);
+}
+
+.pair-hint {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--ms-text-dim);
+  padding-left: 94px;
+}
+
+.direction-row {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: center;
+}
+
+.pair-hint-inline {
+  font-size: 11px;
+  color: var(--ms-text-dim);
+}
+
+.pair-footnote {
+  margin-top: 4px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--ms-border-soft);
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--ms-text-dim);
+}
+
+/* ---------- M4 双列表单 ---------- */
+.pair-table {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.pair-head,
+.pair-row {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr) 88px 38px;
+  gap: 6px;
+  align-items: center;
+}
+
+.pair-head {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ms-text-secondary);
+}
+
+.pair-head span:nth-child(3) {
+  text-align: center;
+}
+
+.pair-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ms-text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.req-star {
+  color: var(--ms-danger);
+  font-weight: 700;
+}
+
+.pair-input,
+.pair-number {
+  width: 100%;
+  min-width: 0;
+}
+
+.pair-number .el-input__wrapper {
+  padding-left: 6px;
+  padding-right: 6px;
+}
+
+.pair-result {
+  display: flex;
+  justify-content: center;
+}
+
+.pair-result-value {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ms-text-secondary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.pair-result-value.calc {
+  color: var(--ms-theory);
+  font-weight: 700;
+}
+
+.pair-readonly {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ms-text-dim);
+  text-align: center;
+}
+
+.pair-unit {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ms-text-dim);
+  white-space: nowrap;
+}
+
+.pair-number .el-input__inner {
+  font-weight: 700;
+  color: var(--ms-text-secondary);
+}
+
+.direction-row .el-radio__label {
+  font-weight: 700;
+  color: var(--ms-text-secondary);
+}
+
+.pair-hint {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--ms-text-dim);
+  padding-left: 94px;
+}
+
+.direction-row {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: center;
+}
+
+.pair-hint-inline {
+  font-size: 11px;
+  color: var(--ms-text-dim);
+}
+
+.pair-footnote {
+  margin-top: 4px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--ms-border-soft);
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--ms-text-dim);
+}
+
+/* ---------- 表格 / 空态 ---------- */
+.section-placeholder {
+  color: var(--ms-text-dim);
+  font-size: 13px;
+  line-height: 1.7;
+  padding: 8px 2px;
+}
+
+.view-toggle {
+  display: flex;
+  align-items: center;
+}
+
+/* ---------- 图表 ---------- */
+.chart-block {
+  margin-bottom: 10px;
+}
+
+.chart-canvas {
+  width: 100%;
+  height: 160px;
+  display: block;
+  border: 1px solid var(--ms-border-soft);
+  border-radius: var(--ms-radius);
+  background: #fff;
+}
+
+.chart-caption {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--ms-text-dim);
+}
+
+/* ---------- 启动失败 ---------- */
+.boot-error {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 32px;
+  text-align: center;
+}
+
+.boot-error-text {
+  max-width: 460px;
+  color: var(--ms-text-secondary);
+}

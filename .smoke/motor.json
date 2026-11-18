@@ -1,0 +1,1 @@
+{"modelName": "RPT-L1", "configName": "\u9ed8\u8ba4", "motorType": "linear", "structure": "\u65e0\u94c1\u82af", "cooling": "\u666e\u901a", "entryMethod": "\u624b\u5de5\u5f55\u5165", "spec": {"forceCont": 12, "forcePeak": 48, "kf": 5.6, "ke": 3.9, "r25": 8.8, "iCont": 2.14, "iPeak": 8.57, "tMax": 110, "kth": 1.1, "uBus": 400, "maxSpeedPeak": 5, "maxSpeedCont": 6}}

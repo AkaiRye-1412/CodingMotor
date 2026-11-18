@@ -1,0 +1,257 @@
+{
+  "meta": {
+    "generator": "scripts/gen-golden.js",
+    "baseline": "prototype/js/calc.js",
+    "baselineSha256": "6fac2ab7f7b64934f4ff993170d55672e0bb821e0b1d7db758dada8037c6e2e6",
+    "fixturesSource": "prototype/js/data.js（演示电机，仅作测试夹具）",
+    "fixturesSha256": "0612eba699c5d2192b92109224f35f9f4cc322dad24db72f7a88010b7ae1de68",
+    "frozenAt": "2026-11-18",
+    "tolerance": 1e-9,
+    "note": "快照由 Node 一次性生成后冻结；Java 单测只读这些 JSON 比对，构建链不依赖 Node。修改 calc.js 或 data.js 后必须重新运行 node scripts/gen-golden.js 并评审快照差异。"
+  },
+  "constants": {
+    "ALPHA_CU": 0.00393,
+    "PRESETS": [
+      0,
+      4,
+      16,
+      56
+    ]
+  },
+  "fmt": [
+    {
+      "value": 1.23456,
+      "n": 3,
+      "result": "1.235"
+    },
+    {
+      "value": 1.2,
+      "n": 3,
+      "result": "1.2"
+    },
+    {
+      "value": 0,
+      "n": 3,
+      "result": "0"
+    },
+    {
+      "value": 0.0001234,
+      "n": 3,
+      "result": "1.23e-4"
+    },
+    {
+      "value": 0.0009,
+      "n": 3,
+      "result": "9.00e-4"
+    },
+    {
+      "value": -0.0009,
+      "n": 3,
+      "result": "-9.00e-4"
+    },
+    {
+      "value": 123,
+      "n": 3,
+      "result": "123"
+    },
+    {
+      "value": 1.23456,
+      "n": null,
+      "result": "1.235"
+    }
+  ],
+  "round": [
+    {
+      "value": 1.23456,
+      "n": 3,
+      "result": 1.235
+    },
+    {
+      "value": 1.005,
+      "n": 2,
+      "result": 1
+    },
+    {
+      "value": -1.005,
+      "n": 2,
+      "result": -1
+    },
+    {
+      "value": null,
+      "n": 2,
+      "result": null
+    }
+  ],
+  "units": {
+    "linear": {
+      "speedDisplayOf": 1.5,
+      "accelFactor": 1
+    },
+    "rotary": {
+      "speedDisplayOf": 1,
+      "speedDisplayOfCurve": 90,
+      "accelFactor": 0.017453292519943295,
+      "accelDisplayOf": 1.6666666666666665
+    }
+  },
+  "rmsOfCycle": [
+    {
+      "id": "normal",
+      "args": [
+        10,
+        0.1,
+        5,
+        0.2,
+        8,
+        0.1,
+        0.3
+      ],
+      "result": 5.529143565818179
+    },
+    {
+      "id": "zero-total",
+      "args": [
+        1,
+        0,
+        2,
+        0,
+        3,
+        0,
+        0
+      ],
+      "result": 0
+    },
+    {
+      "id": "no-cruise",
+      "args": [
+        10,
+        0.2,
+        0,
+        0,
+        10,
+        0.2,
+        0.1
+      ],
+      "result": 8.94427190999916
+    }
+  ],
+  "redline": [
+    {
+      "id": "linear-pass",
+      "kind": "linear",
+      "plan": {
+        "fn": "planPointToPoint",
+        "input": {
+          "dist": 0.3,
+          "time": 0.5,
+          "shape": "trapezoid"
+        }
+      },
+      "vMax": 2,
+      "aMax": 6,
+      "result": null
+    },
+    {
+      "id": "linear-speed-over",
+      "kind": "linear",
+      "plan": {
+        "fn": "planPointToPoint",
+        "input": {
+          "dist": 1,
+          "time": 0.5,
+          "shape": "trapezoid"
+        }
+      },
+      "vMax": 2,
+      "aMax": 100,
+      "result": "峰值速度 3 m/s 超出上限 2（50%）\n可延长运动时间，或改用自定义模式重新分配加速度。"
+    },
+    {
+      "id": "linear-accel-over",
+      "kind": "linear",
+      "plan": {
+        "fn": "planPointToPoint",
+        "input": {
+          "dist": 0.3,
+          "time": 0.5,
+          "shape": "trapezoid"
+        }
+      },
+      "vMax": 100,
+      "aMax": 5,
+      "result": "峰值加速度 5.4 m/s² 超出上限 5（8%）\n可延长运动时间，或改用自定义模式重新分配加速度。"
+    },
+    {
+      "id": "rotary-speed-over",
+      "kind": "rotary",
+      "plan": {
+        "fn": "planPointToPoint",
+        "input": {
+          "dist": 360,
+          "time": 0.6,
+          "shape": "trapezoid"
+        }
+      },
+      "vMax": 100,
+      "aMax": 100000,
+      "result": "峰值速度 150 rpm 超出上限 100（50%）\n可延长运动时间，或改用自定义模式重新分配加速度。"
+    }
+  ],
+  "closestPreset": [
+    {
+      "maxTau": 50,
+      "result": 16
+    },
+    {
+      "maxTau": 3,
+      "result": null
+    },
+    {
+      "maxTau": 0,
+      "result": null
+    },
+    {
+      "maxTau": 100,
+      "result": 56
+    },
+    {
+      "maxTau": 16,
+      "result": 16
+    }
+  ],
+  "requiredMissing": [
+    {
+      "motorId": "ILM-12-020",
+      "result": []
+    },
+    {
+      "motorId": "ILM-12-040",
+      "result": []
+    },
+    {
+      "motorId": "ILM-20-050",
+      "result": [
+        {
+          "key": "Tmax",
+          "label": "最高线圈温度"
+        },
+        {
+          "key": "Kth",
+          "label": "热耗散常数 ({cool})"
+        }
+      ]
+    },
+    {
+      "motorId": "ADR110-B136 / 串联",
+      "result": []
+    },
+    {
+      "motorId": "ADR110-B105 / 串联",
+      "result": []
+    },
+    {
+      "motorId": "AVM12-6.4 / 默认",
+      "result": []
+    }
+  ]
+}

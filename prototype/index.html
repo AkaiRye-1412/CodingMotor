@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>电机选型工具 — 交互原型</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- ======== 顶栏 ======== -->
+<header class="topbar">
+  <img class="brand-logo" src="assets/akribis-logo.png" alt="Akribis">
+
+  <div class="tabs" id="tabs">
+    <div class="tab active" data-kind="linear"><span>／</span> 直线马达</div>
+    <div class="tab" data-kind="rotary"><span>⟳</span> 旋转马达</div>
+  </div>
+
+  <div class="topbar-meta">
+    <div class="meta-field">
+      <label for="machineName">机器名称</label>
+      <input type="text" id="machineName" value="General Machine">
+    </div>
+    <div class="meta-field">
+      <label for="axisName">轴名称</label>
+      <input type="text" id="axisName" value="Axis 1">
+    </div>
+    <div class="meta-field">
+      <label for="projectDate">日期</label>
+      <input type="date" id="projectDate">
+    </div>
+  </div>
+
+  <div class="topbar-actions">
+    <button class="icon-btn" id="btnImport"><span class="glyph">📥</span>导入电机参数</button>
+    <button class="icon-btn" id="btnExport"><span class="glyph">📄</span>导出报告</button>
+  </div>
+</header>
+
+<!-- ======== 工作区 ======== -->
+<main class="workspace">
+
+  <!-- 左列 -->
+  <div class="col">
+    <section class="panel">
+      <div class="panel-head">运动模式</div>
+      <div class="panel-body" id="modeBody"></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">曲线管理</div>
+      <div class="panel-body" id="curveBody"></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">用户输入<span class="spacer" id="inputHint"></span></div>
+      <div class="panel-body" id="inputBody"></div>
+    </section>
+  </div>
+
+  <!-- 中列 -->
+  <div class="col">
+    <section class="panel">
+      <div class="panel-head">安全余量</div>
+      <div class="panel-body" id="marginBody"></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">理论计算结果</div>
+      <div class="panel-body" id="resultBody"></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head">电机实际应用值</div>
+      <div class="panel-body" id="appliedBody"></div>
+    </section>
+  </div>
+
+  <!-- 右列 -->
+  <div class="col">
+    <section class="panel">
+      <div class="panel-head">
+        <div class="view-toggle" id="panelToggle" style="margin-left:0">
+          <button data-panel="cand" class="active">推荐电机</button>
+          <button data-panel="motor">选入电机数据</button>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div id="candBody"></div>
+        <div id="motorBody" hidden></div>
+      </div>
+    </section>
+
+    <section class="panel chart-panel">
+      <div class="panel-head">运动曲线<span class="spacer" id="chartHint"></span></div>
+      <div class="chart-box"><canvas id="chartSpeed"></canvas></div>
+      <div class="chart-caption"><span id="capSpeed">图1: 速度 / 时间图</span></div>
+      <div class="chart-box"><canvas id="chartForce"></canvas></div>
+      <div class="chart-caption"><span id="capForce">图2: 推力 / 时间图</span></div>
+    </section>
+  </div>
+
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script src="js/data.js"></script>
+<script src="js/calc.js"></script>
+<script src="js/chart.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
+

@@ -1,0 +1,61 @@
+server:
+  # 只监听本机回环（A-3）；打包阶段再接入自动选空闲端口与自动打开浏览器
+  address: 127.0.0.1
+  port: 8080
+
+spring:
+  application:
+    name: motorsizer
+  datasource:
+    # H2 文件模式 + MySQL 兼容（D14）；库文件放 %APPDATA%，卸载/升级不丢数据（A-5）
+    # 注意：H2 2.2 不支持 AUTO_SERVER=TRUE 与 DB_CLOSE_ON_EXIT=FALSE 同时设置
+    url: jdbc:h2:file:${user.home}/AppData/Roaming/MotorSizer/data/motorsizer;MODE=MySQL;AUTO_SERVER=TRUE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  sql:
+    init:
+      # schema.sql 全部 IF NOT EXISTS，可重复执行
+      mode: always
+      schema-locations: classpath:db/schema.sql
+      # 必须显式 UTF-8：CHECK 约束里的中文枚举字面量按平台默认编码解码会变乱码
+      encoding: UTF-8
+  jackson:
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
+  # S4：报告模板独立目录，避免与业务视图模板混放
+  thymeleaf:
+    prefix: classpath:/report-templates/
+    suffix: .html
+    mode: HTML
+    encoding: UTF-8
+  servlet:
+    multipart:
+      # 样册识别（I1）：单文件上限按 06 设计文档约束
+      max-file-size: 50MB
+      max-request-size: 60MB
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    banner: false
+    db-config:
+      id-type: auto
+
+logging:
+  level:
+    root: info
+    # 计算与报告实现后按需下调，避免开发期刷屏
+    com.motorsizer: info
+  file:
+    name: ${user.home}/AppData/Roaming/MotorSizer/logs/motorsizer.log
+
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    # 无鉴权体系（API 1.5），不需要 Authorize 按钮
+    disable-swagger-default-url: true

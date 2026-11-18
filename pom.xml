@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.3.5</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>com.motorsizer</groupId>
+    <artifactId>motorsizer-parent</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+    <name>MotorSizer</name>
+    <description>电机选型工具（桌面单机版）</description>
+
+    <modules>
+        <module>motorsizer-domain</module>
+        <module>motorsizer-app</module>
+    </modules>
+
+    <properties>
+        <java.version>17</java.version>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <mybatis-plus.version>3.5.7</mybatis-plus.version>
+        <openhtmltopdf.version>1.0.10</openhtmltopdf.version>
+        <springdoc.version>2.6.0</springdoc.version>
+        <frontend-maven-plugin.version>1.15.0</frontend-maven-plugin.version>
+        <frontend.node.version>v22.12.0</frontend.node.version>
+        <frontend.npm.version>10.9.0</frontend.npm.version>
+        <!-- 后端单独开发/测试时跳过前端构建：mvn test -DskipFrontend=true -->
+        <skipFrontend>false</skipFrontend>
+    </properties>
+</project>

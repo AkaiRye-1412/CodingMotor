@@ -1,0 +1,259 @@
+{
+  "meta": {
+    "generator": "scripts/gen-golden.js",
+    "baseline": "prototype/js/calc.js",
+    "baselineSha256": "6fac2ab7f7b64934f4ff993170d55672e0bb821e0b1d7db758dada8037c6e2e6",
+    "fixturesSource": "prototype/js/data.js（演示电机，仅作测试夹具）",
+    "fixturesSha256": "0612eba699c5d2192b92109224f35f9f4cc322dad24db72f7a88010b7ae1de68",
+    "frozenAt": "2026-11-18",
+    "tolerance": 1e-9,
+    "note": "快照由 Node 一次性生成后冻结；Java 单测只读这些 JSON 比对，构建链不依赖 Node。修改 calc.js 或 data.js 后必须重新运行 node scripts/gen-golden.js 并评审快照差异。"
+  },
+  "cases": [
+    {
+      "id": "linear-ilm12020-2kg-pass",
+      "kind": "linear",
+      "motorId": "ILM-12-020",
+      "theoreticalRef": "linear-2kg-1m-1s-tilt0",
+      "marginLow": 0.3,
+      "result": {
+        "pass": true,
+        "verdict": "pass",
+        "passCont": true,
+        "passPeak": true,
+        "passSpeedPeak": true,
+        "passSpeedCont": true,
+        "speedSkipped": [],
+        "reasons": [
+          "连续能力 ✓ 12 ≥ 需求 9.55",
+          "峰值能力 ✓ 48 ≥ 需求 11.7",
+          "峰值速度 ✓ 1.5 m/s ≤ @峰值上限 5",
+          "峰值速度 ✓ 1.5 m/s ≤ @持续上限 6"
+        ],
+        "headroom": 0.25614858604265534,
+        "overSize": 0.6329931618554521,
+        "contHave": 12,
+        "peakHave": 48,
+        "contNeed": 9.553009996854396,
+        "peakNeed": 11.700000000000001
+      }
+    },
+    {
+      "id": "linear-ilm12040-2kg-pass",
+      "kind": "linear",
+      "motorId": "ILM-12-040",
+      "theoreticalRef": "linear-2kg-1m-1s-tilt0",
+      "marginLow": 0.3,
+      "result": {
+        "pass": true,
+        "verdict": "pass",
+        "passCont": true,
+        "passPeak": true,
+        "passSpeedPeak": true,
+        "passSpeedCont": true,
+        "speedSkipped": [],
+        "reasons": [
+          "连续能力 ✓ 22 ≥ 需求 9.55",
+          "峰值能力 ✓ 88 ≥ 需求 11.7",
+          "峰值速度 ✓ 1.5 m/s ≤ @峰值上限 4",
+          "峰值速度 ✓ 1.5 m/s ≤ @持续上限 5"
+        ],
+        "headroom": 1.3029390744115346,
+        "overSize": 1.9938207967349952,
+        "contHave": 22,
+        "peakHave": 88,
+        "contNeed": 9.553009996854396,
+        "peakNeed": 11.700000000000001
+      }
+    },
+    {
+      "id": "linear-ilm12020-8kg-fail",
+      "kind": "linear",
+      "motorId": "ILM-12-020",
+      "theoreticalRef": "linear-8kg-1m-1s-tilt90",
+      "marginLow": 0.3,
+      "result": {
+        "pass": false,
+        "verdict": "fail",
+        "passCont": false,
+        "passPeak": false,
+        "passSpeedPeak": true,
+        "passSpeedCont": true,
+        "speedSkipped": [],
+        "reasons": [
+          "连续能力 ✗ 12 < 需求 108.95（含下限 30%）",
+          "峰值能力 ✗ 48 < 需求 148.82",
+          "峰值速度 ✓ 1.5 m/s ≤ @峰值上限 5",
+          "峰值速度 ✓ 1.5 m/s ≤ @持续上限 6"
+        ],
+        "headroom": -0.889852880038137,
+        "overSize": -0.8568087440495781,
+        "contHave": 12,
+        "peakHave": 48,
+        "contNeed": 108.94519987590093,
+        "peakNeed": 148.824
+      }
+    },
+    {
+      "id": "linear-ilm20050-missing-thermal",
+      "kind": "linear",
+      "motorId": "ILM-20-050",
+      "theoreticalRef": "linear-2kg-1m-1s-tilt0",
+      "marginLow": 0.3,
+      "result": {
+        "verdict": "unknown",
+        "pass": false,
+        "missing": [
+          "最高线圈温度",
+          "热耗散常数 ({cool})"
+        ],
+        "reasons": [
+          "信息不全，无法判定：缺 最高线圈温度、热耗散常数 ({cool})"
+        ]
+      }
+    },
+    {
+      "id": "linear-ilm12020-speed-fail",
+      "kind": "linear",
+      "motorId": "ILM-12-020",
+      "theoreticalRef": "linear-0kg-10m-1s-tilt0",
+      "marginLow": 0.3,
+      "result": {
+        "pass": false,
+        "verdict": "fail",
+        "passCont": true,
+        "passPeak": true,
+        "passSpeedPeak": false,
+        "passSpeedCont": false,
+        "speedSkipped": [],
+        "reasons": [
+          "连续能力 ✓ 12 ≥ 需求 0",
+          "峰值能力 ✓ 48 ≥ 需求 0",
+          "峰值速度 ✗ 15 m/s > 电机 @峰值上限 5",
+          "峰值速度 ✗ 15 m/s > 电机 @持续上限 6"
+        ],
+        "headroom": 0,
+        "overSize": 0,
+        "contHave": 12,
+        "peakHave": 48,
+        "contNeed": 0,
+        "peakNeed": 0
+      }
+    },
+    {
+      "id": "linear-ilm12020-margin0",
+      "kind": "linear",
+      "motorId": "ILM-12-020",
+      "theoreticalRef": "linear-2kg-1m-1s-tilt0",
+      "marginLow": 0,
+      "result": {
+        "pass": true,
+        "verdict": "pass",
+        "passCont": true,
+        "passPeak": true,
+        "passSpeedPeak": true,
+        "passSpeedCont": true,
+        "speedSkipped": [],
+        "reasons": [
+          "连续能力 ✓ 12 ≥ 需求 7.35",
+          "峰值能力 ✓ 48 ≥ 需求 9",
+          "峰值速度 ✓ 1.5 m/s ≤ @峰值上限 5",
+          "峰值速度 ✓ 1.5 m/s ≤ @持续上限 6"
+        ],
+        "headroom": 0.6329931618554521,
+        "overSize": 0.6329931618554521,
+        "contHave": 12,
+        "peakHave": 48,
+        "contNeed": 7.3484692283495345,
+        "peakNeed": 9
+      }
+    },
+    {
+      "id": "rotary-adr110b136-series",
+      "kind": "rotary",
+      "motorId": "ADR110-B136 / 串联",
+      "theoreticalRef": "rotary-360-06-tilt90",
+      "marginLow": 0.3,
+      "result": {
+        "pass": false,
+        "verdict": "fail",
+        "passCont": false,
+        "passPeak": true,
+        "passSpeedPeak": true,
+        "passSpeedCont": true,
+        "speedSkipped": [],
+        "reasons": [
+          "连续能力 ✗ 4.2 < 需求 4.22（含下限 30%）",
+          "峰值能力 ✓ 12.6 ≥ 需求 5.76",
+          "峰值速度 ✓ 150 rpm ≤ @峰值上限 1000",
+          "峰值速度 ✓ 150 rpm ≤ @持续上限 2000"
+        ],
+        "headroom": -0.004423873554157853,
+        "overSize": 0.2942489643795949,
+        "contHave": 4.2,
+        "peakHave": 12.6,
+        "contNeed": 4.218662830931668,
+        "peakNeed": 5.755088062083414
+      }
+    },
+    {
+      "id": "rotary-adr110b105-series",
+      "kind": "rotary",
+      "motorId": "ADR110-B105 / 串联",
+      "theoreticalRef": "rotary-360-06-tilt90",
+      "marginLow": 0.3,
+      "result": {
+        "pass": false,
+        "verdict": "fail",
+        "passCont": false,
+        "passPeak": true,
+        "passSpeedPeak": true,
+        "passSpeedCont": true,
+        "speedSkipped": [],
+        "reasons": [
+          "连续能力 ✗ 3 < 需求 4.22（含下限 30%）",
+          "峰值能力 ✓ 9 ≥ 需求 5.76",
+          "峰值速度 ✓ 150 rpm ≤ @峰值上限 1200",
+          "峰值速度 ✓ 150 rpm ≤ @持续上限 2400"
+        ],
+        "headroom": -0.28887419539582704,
+        "overSize": -0.0755364540145751,
+        "contHave": 3,
+        "peakHave": 9,
+        "contNeed": 4.218662830931668,
+        "peakNeed": 5.755088062083414
+      }
+    },
+    {
+      "id": "coil-avm12-speed-skipped",
+      "kind": "linear",
+      "motorId": "AVM12-6.4 / 默认",
+      "theoreticalRef": "coil-linear-030-05-tilt0",
+      "marginLow": 0.3,
+      "result": {
+        "pass": false,
+        "verdict": "fail",
+        "passCont": false,
+        "passPeak": false,
+        "passSpeedPeak": true,
+        "passSpeedCont": true,
+        "speedSkipped": [
+          "最高速度 @峰值",
+          "最高速度 @持续"
+        ],
+        "reasons": [
+          "连续能力 ✗ 0.86 < 需求 2.87（含下限 30%）",
+          "峰值能力 ✗ 3.33 < 需求 3.51",
+          "峰值速度 0.9 m/s 未校核（未录入最高速度 @峰值）",
+          "峰值速度未校核（未录入最高速度 @持续）"
+        ],
+        "headroom": -0.6999200600009212,
+        "overSize": -0.6098960780011975,
+        "contHave": 0.86,
+        "peakHave": 3.33,
+        "contNeed": 2.865902999056318,
+        "peakNeed": 3.51
+      }
+    }
+  ]
+}

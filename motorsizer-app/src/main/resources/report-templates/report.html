@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="zh-CN" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8"/>
+    <title th:text="|电机选型报告 - ${report.projectName}|">电机选型报告</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 16mm 14mm;
+            @bottom-center {
+                content: counter(page) " / " counter(pages);
+                font-family: "Noto Sans SC", sans-serif;
+                font-size: 9pt;
+                color: #6b7683;
+            }
+        }
+
+        body {
+            font-family: "Noto Sans SC", "Microsoft YaHei", sans-serif;
+            font-size: 10pt;
+            color: #20262e;
+            line-height: 1.55;
+        }
+
+        .cover {
+            page-break-after: always;
+            text-align: center;
+            padding-top: 65mm;
+        }
+
+        .cover h1 {
+            font-size: 24pt;
+            margin-bottom: 4mm;
+        }
+
+        .cover .subtitle {
+            font-size: 12pt;
+            color: #606266;
+            margin-bottom: 12mm;
+        }
+
+        .cover .meta {
+            font-size: 11pt;
+            color: #303133;
+            line-height: 2.0;
+        }
+
+        .toc {
+            page-break-after: always;
+        }
+
+        .toc h2 {
+            font-size: 16pt;
+            margin-bottom: 6mm;
+        }
+
+        .toc li {
+            margin: 2mm 0;
+            font-size: 10.5pt;
+        }
+
+        .plan-section {
+            break-before: page;
+        }
+
+        .plan-section h2 {
+            font-size: 15pt;
+            border-bottom: 0.5mm solid #c6ced6;
+            padding-bottom: 2mm;
+            margin-bottom: 4mm;
+        }
+
+        .plan-summary {
+            color: #606266;
+            font-size: 9.5pt;
+            margin-bottom: 3mm;
+        }
+
+        .section-title {
+            font-size: 11.5pt;
+            font-weight: 700;
+            margin: 4mm 0 2mm;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 3mm;
+        }
+
+        th, td {
+            border: 0.35mm solid #c6ced6;
+            padding: 1.3mm 2mm;
+            text-align: left;
+            vertical-align: middle;
+        }
+
+        th {
+            background: #e4e9ef;
+            font-weight: 700;
+        }
+
+        td.value {
+            text-align: right;
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+        }
+
+        td.unit {
+            width: 20mm;
+            color: #606266;
+        }
+
+        .candidate-table td {
+            font-size: 9pt;
+        }
+
+        .muted {
+            color: #909399;
+        }
+
+        .warn {
+            color: #8a6100;
+            background: #fdf4dc;
+            border: 0.3mm solid #d9b96a;
+            padding: 1.5mm 2mm;
+            font-size: 9pt;
+        }
+
+        .error-box {
+            color: #b02a1e;
+            background: #fdeae8;
+            border: 0.4mm solid #d98a82;
+            padding: 3mm;
+            font-size: 10pt;
+        }
+
+        .verdict {
+            font-weight: 700;
+            color: #1f7a3d;
+            margin-bottom: 2mm;
+        }
+
+        .verdict-bad {
+            color: #b02a1e;
+        }
+
+        .chart {
+            margin: 3mm 0 1mm;
+            page-break-inside: avoid;
+        }
+
+        .chart img {
+            width: 100%;
+            max-width: 176mm;
+        }
+
+        .chart-caption {
+            font-size: 9pt;
+            color: #606266;
+            margin-top: 1mm;
+        }
+
+        .supply {
+            margin-top: 1mm;
+            font-size: 9.5pt;
+        }
+    </style>
+</head>
+<body>
+
+<!-- ================= 封面 ================= -->
+<div class="cover">
+    <h1>电机选型报告</h1>
+    <div class="subtitle" th:text="${report.projectName}">项目名称</div>
+    <div class="meta">
+        <div>轴名称：<span th:text="${report.axisName}">轴名称</span></div>
+        <div>报告日期：<span th:text="${report.reportDate}">日期</span></div>
+        <div>方案数量：<span th:text="${report.planCount}">0</span> 条</div>
+        <div>运动模式：<span th:text="${report.modeLabel}">点到点</span></div>
+        <div>S 曲线：<span th:text="${report.smoothLabel}">关闭</span></div>
+        <div>安全余量：<span th:text="${report.marginLabel}">下限 30%</span></div>
+        <div th:if="${report.customerName != null}">
+            客户名称：<span th:text="${report.customerName}">客户</span>
+        </div>
+    </div>
+</div>
+
+<!-- ================= 方案目录 ================= -->
+<div class="toc">
+    <h2>方案目录</h2>
+    <div th:if="${report.workingConditionNote != null}" class="plan-summary">
+        工况说明：<span th:text="${report.workingConditionNote}"></span>
+    </div>
+    <ul>
+        <li th:each="plan : ${report.plans}">
+            方案 <span th:text="${plan.planNo}">1</span>
+            <span th:text="|（${plan.summary}）|">（型号）</span>
+        </li>
+    </ul>
+</div>
+
+<!-- ================= 逐方案 ================= -->
+<div th:each="plan : ${report.plans}" class="plan-section">
+    <h2>方案 <span th:text="${plan.planNo}">1</span></h2>
+    <div class="plan-summary" th:if="${plan.ok}">
+        选定型号：<span th:text="${plan.summary}">未选取电机</span>
+    </div>
+
+    <div th:if="${!plan.ok}" class="error-box">
+        该方案无法计算：<span th:text="${plan.error}">原因</span>
+    </div>
+
+    <div th:if="${plan.ok}">
+        <div class="section-title">工况输入</div>
+        <table>
+            <thead>
+            <tr><th>参数</th><th>数值</th><th>单位</th></tr>
+            </thead>
+            <tbody>
+            <tr th:each="row : ${plan.inputs}">
+                <td th:text="${row.label}">参数</td>
+                <td class="value" th:text="${row.value}">—</td>
+                <td class="unit" th:text="${row.unit}"></td>
+            </tr>
+            </tbody>
+        </table>
+
+        <div class="section-title">理论计算结果</div>
+        <table>
+            <thead>
+            <tr><th>项目</th><th>数值</th><th>单位</th></tr>
+            </thead>
+            <tbody>
+            <tr th:each="row : ${plan.theoretical}">
+                <td th:text="${row.label}">项目</td>
+                <td class="value" th:text="${row.value}">—</td>
+                <td class="unit" th:text="${row.unit}"></td>
+            </tr>
+            </tbody>
+        </table>
+
+        <div class="section-title">推荐清单</div>
+        <div th:if="${#lists.isEmpty(plan.candidates)}" class="muted">
+            当前无合规型号。
+        </div>
+        <table th:if="${!#lists.isEmpty(plan.candidates)}" class="candidate-table">
+            <thead>
+            <tr><th>型号</th><th>类型</th><th>Safety</th><th>判定依据</th><th>标记</th></tr>
+            </thead>
+            <tbody>
+            <tr th:each="candidate : ${plan.candidates}">
+                <td th:text="${candidate.label}">型号</td>
+                <td th:text="${candidate.typeLabel}">类型</td>
+                <td class="value" th:text="${candidate.safety}">—</td>
+                <td th:text="${candidate.reasons}">依据</td>
+                <td th:text="${candidate.overSized}"></td>
+            </tr>
+            </tbody>
+        </table>
+
+        <div class="section-title">选定型号</div>
+        <div th:if="${plan.selected == null}" class="muted">未选取电机</div>
+        <div th:if="${plan.selected != null}">
+            <div>
+                <span th:text="${plan.selected.modelLabel}">型号</span>
+                <span class="muted" th:text="|（${plan.selected.inRecommendation}）|">状态</span>
+            </div>
+            <div th:if="${plan.selected.outOfRangeReason != null}" class="warn"
+                 th:text="${plan.selected.outOfRangeReason}"></div>
+            <table>
+                <thead>
+                <tr><th>参数</th><th>数值</th><th>单位</th></tr>
+                </thead>
+                <tbody>
+                <tr th:each="row : ${plan.selected.parameters}">
+                    <td th:text="${row.label}">参数</td>
+                    <td class="value" th:text="${row.value}">—</td>
+                    <td class="unit" th:text="${row.unit}"></td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="section-title">电机实际应用值</div>
+        <div th:if="${#lists.isEmpty(plan.applied)}" class="muted">选取电机后显示应用值。</div>
+        <div th:if="${!#lists.isEmpty(plan.applied)}">
+            <div class="verdict"
+                 th:classappend="${plan.thermalVerdict == '线圈温度超限' ? ' verdict-bad' : ''}">
+                <span th:text="${plan.thermalVerdict}">热校核结论</span>
+                <span th:if="${plan.overVoltageWarning != ''}" class="verdict-bad"
+                      th:text="| · ${plan.overVoltageWarning}|"></span>
+            </div>
+            <table>
+                <thead>
+                <tr><th>应用值</th><th>数值</th><th>单位</th></tr>
+                </thead>
+                <tbody>
+                <tr th:each="row : ${plan.applied}">
+                    <td th:text="${row.label}">项目</td>
+                    <td class="value" th:text="${row.value}">—</td>
+                    <td class="unit" th:text="${row.unit}"></td>
+                </tr>
+                </tbody>
+            </table>
+            <div th:if="${plan.supplyText != ''}" class="supply" th:text="${plan.supplyText}"></div>
+        </div>
+
+        <div class="section-title">运动曲线</div>
+        <div th:if="${plan.speedChart == null}" class="muted">暂无曲线数据。</div>
+        <div th:if="${plan.speedChart != null}">
+            <div class="chart">
+                <img th:src="${plan.speedChart}" alt="速度 / 时间图"/>
+                <div class="chart-caption">
+                    图 1：速度 / 时间图（<span th:text="${plan.velocityUnit}"></span>）
+                </div>
+            </div>
+            <div class="chart">
+                <img th:src="${plan.forceChart}" alt="力 / 力矩 / 时间图"/>
+                <div class="chart-caption">
+                    图 2：推力 / 力矩 / 时间图（<span th:text="${plan.forceUnit}"></span>）
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>
