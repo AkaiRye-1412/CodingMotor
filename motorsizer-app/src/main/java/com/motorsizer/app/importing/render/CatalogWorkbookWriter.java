@@ -26,7 +26,6 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -46,10 +45,27 @@ public class CatalogWorkbookWriter {
     private static final Pattern NUMERIC = Pattern.compile("^-?\\d+(?:\\.\\d+)?(?:[Ee][+-]?\\d+)?$");
 
     /** 型号值里的中文接法后缀：{@code 串联 → -S}、{@code 并联 → -P}（前面若已有连字符不再叠加）。 */
-    private static final Pattern CONFIG_SUFFIX = Pattern.compile("-?(?:串联|并联)");
+    /**
+     * 接法后缀：中文 {@code 串联/并联} 与英文 {@code Series/Serial/Parallel} 都要压成 {@code -S/-P}。
+     *
+     * <p>锚定在<b>字符串末尾</b>（配置名就是整个接法词，中间夹着的词不是接法标记）：
+     * {@code Parallel Shaft} 这类词组因此不会被误缩写。也不能用 {@code \b}——
+     * Java 的 {@code \b} 基于 ASCII 的 {@code \w}，跟在中文后面永远不成立。
+     */
+    private static final Pattern CONFIG_SUFFIX = Pattern.compile(
+            "-?(?:串联|并联|series|serial|parallel)$", Pattern.CASE_INSENSITIVE);
 
-    /** 兜底列名（{@code 值 / 列3 / v1}）：拼型号时丢弃，避免出现「AXD120-71值」。 */
-    private static final Pattern FALLBACK_LABEL = Pattern.compile("(?:v|列)\\d+");
+    /**
+     * 兜底列名：拼型号时丢弃，避免出现「AXD120-71值」「CRM0013-Value」。
+     *
+     * <p>{@code Value / Typical / Nominal} 也要算进来——单配置图纸的参数表只有一列
+     * {@code Value}，它描述的是「值这一列」，不是型号变体。
+     */
+    private static final Pattern FALLBACK_LABEL = Pattern.compile(
+            "(?i)v\\d+|列\\d+|值|values?|typ(?:ical)?|nominal|spec(?:ification)?s?|rating");
+
+    /** Excel 工作表名禁用字符 {@code [ ] : * ? / \}；首尾的 {@code '} 也不允许。 */
+    private static final Pattern SHEET_NAME_ILLEGAL = Pattern.compile("[\\[\\]:*?/\\\\]");
     private static final DateTimeFormatter STAMP = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     /** 写出结果（统计列进 job.json，供前端展示）。 */
@@ -87,8 +103,10 @@ public class CatalogWorkbookWriter {
 
     private Result writeSummarySheet(XSSFWorkbook wb, StyleBank styles, ParsedCatalog data) {
         // 源表是不是「串联 | 并联」两列版式：只用于报告标注，输出结构一律是单列「值」。
+        // 注意不能用 Set.copyOf(labels) 去重——两列同名时它会抛 IllegalArgumentException，
+        // 而「两列都叫 Value」在单配置图纸里很常见。
         boolean wide = data.tables().stream().allMatch(t ->
-                t.labels().size() <= 2 && Set.copyOf(t.labels()).stream()
+                t.labels().size() <= 2 && t.labels().stream()
                         .allMatch(l -> l.equals("串联") || l.equals("并联")));
 
         Sheet ws = wb.createSheet("参数汇总");
@@ -167,8 +185,8 @@ public class CatalogWorkbookWriter {
     static String mergeModelConfig(String model, String config) {
         String m = model == null ? "" : model.strip();
         String c = config == null ? "" : config.strip();
-        if (c.equals("值") || FALLBACK_LABEL.matcher(c).matches()) {
-            c = "";                                // 「值 / 列N / vN」是兜底列名，本身没有型号含义
+        if (FALLBACK_LABEL.matcher(c).matches()) {
+            c = "";                                // 「值 / 列N / vN / Value」是兜底列名，本身没有型号含义
         }
         String merged;
         if (c.isEmpty() || c.equals(m)) {
@@ -187,20 +205,25 @@ public class CatalogWorkbookWriter {
     }
 
     /**
-     * 把型号值里的中文接法压成后缀：{@code AUM2-S2串联 → AUM2-S2-S}、{@code AUM2-S2并联 → AUM2-S2-P}。
+     * 把型号值里的接法压成后缀：{@code AUM2-S2串联 → AUM2-S2-S}、{@code ACD85-P-15-Parallel → ACD85-P-15-P}。
      * <p>已经是 {@code -串联} 的不会再叠一个连字符。
      */
     static String compactConfigWord(String value) {
-        if (value == null || value.isEmpty()
-                || (value.indexOf('串') < 0 && value.indexOf('并') < 0)) {
+        if (value == null || value.isEmpty()) {
             return value == null ? "" : value;
         }
-        StringBuilder sb = new StringBuilder(value.length());
         Matcher matcher = CONFIG_SUFFIX.matcher(value);
+        StringBuilder sb = new StringBuilder(value.length());
+        boolean changed = false;
         while (matcher.find()) {
-            String text = matcher.group();
-            String suffix = text.contains("串") ? "-S" : "-P";
+            String text = matcher.group().toLowerCase(java.util.Locale.ROOT);
+            String suffix = text.contains("串") || text.contains("series") || text.contains("serial")
+                    ? "-S" : "-P";
             matcher.appendReplacement(sb, suffix);
+            changed = true;
+        }
+        if (!changed) {
+            return value;                          // 绝大多数型号不含接法，省一次 String 分配
         }
         matcher.appendTail(sb);
         return sb.toString();
@@ -216,6 +239,63 @@ public class CatalogWorkbookWriter {
                 .toList();
     }
 
+    // ---------------------------------------------------------------- 写盘安全阀
+
+    /**
+     * 合并单元格的唯一入口：区间不足两格就直接跳过。
+     *
+     * <p>POI 的 {@code addMergedRegion} 遇到单格区间会抛
+     * {@code IllegalArgumentException: Merged region D9 must contain 2 or more cells}。
+     * 而「单格合并」在真实图纸里是<b>正常数据形状</b>——只有一列 {@code Value}
+     * 的参数表里，{@code row.merged}（原表串联/并联共用一格）就没有第二格可合；
+     * 列数为 0 时 {@code 2 + labels.size()} 还会小于起始列。两者都只是「不需要合并」，
+     * 不该让整份 Excel 写不出来。
+     */
+    private static void merge(Sheet sheet, int r1, int c1, int r2, int c2) {
+        if (r2 < r1 || c2 <= c1) {
+            return;                                   // 单格或列区间倒置：没有可合并的范围
+        }
+        sheet.addMergedRegion(new CellRangeAddress(r1, r2, c1, c2));
+    }
+
+    /** 工作表名：清掉 Excel 禁用字符、限 31 字、不与已有工作表重名。 */
+    private static String sheetName(XSSFWorkbook wb, CatalogTable table) {
+        String base = sanitizeSheetName(table.model());
+        String name = base;
+        if (wb.getSheet(name) != null) {
+            name = withTail(base, "_" + table.page());
+        }
+        int suffix = 2;
+        while (wb.getSheet(name) != null) {
+            name = withTail(base, "_" + table.page() + "_" + suffix++);
+        }
+        return name;
+    }
+
+    /**
+     * 型号 → 合法工作表名。型号常含 {@code /}（{@code AKM100-B4/D79}）或 {@code :}，
+     * 而 Excel 的工作表名不允许 {@code [ ] : * ? / \}，POI 会直接抛
+     * {@code IllegalArgumentException: Sheet name ... is invalid}。
+     */
+    static String sanitizeSheetName(String raw) {
+        String s = raw == null ? "" : SHEET_NAME_ILLEGAL.matcher(raw).replaceAll("-");
+        s = s.replaceAll("\\s+", " ").strip();
+        while (s.endsWith("'")) {
+            s = s.substring(0, s.length() - 1);
+        }
+        if (s.isEmpty()) {
+            s = "型号";
+        }
+        return s.length() > 24 ? s.substring(0, 24).strip() : s;
+    }
+
+    /** 拼工作表名后缀，总长不超过 Excel 的 31 字上限。 */
+    private static String withTail(String base, String tail) {
+        int room = 31 - tail.length();
+        String head = base.length() > room ? base.substring(0, Math.max(1, room)) : base;
+        return head + tail;
+    }
+
     // ---------------------------------------------------------------- 型号原版式页
 
     private void writeModelSheets(XSSFWorkbook wb, StyleBank styles, ParsedCatalog data) {
@@ -224,18 +304,7 @@ public class CatalogWorkbookWriter {
             return;                                   // 型号过多时只出长表，避免上百个可分页
         }
         for (CatalogTable table : data.tables()) {
-            String name = table.model().length() > 28 ? table.model().substring(0, 28) : table.model();
-            if (name.isBlank()) {
-                name = "型号";
-            }
-            if (wb.getSheet(name) != null) {
-                name = name + "_" + table.page();
-            }
-            int suffix = 2;
-            while (wb.getSheet(name) != null) {
-                name = (table.model().length() > 26 ? table.model().substring(0, 26) : table.model())
-                        + "_" + table.page() + "_" + suffix++;
-            }
+            String name = sheetName(wb, table);
 
             Sheet s = wb.createSheet(name);
             Row title = s.createRow(0);
@@ -258,7 +327,7 @@ public class CatalogWorkbookWriter {
                     }
                     Cell label = sr.getCell(0);
                     label.setCellValue(row.name);
-                    s.addMergedRegion(new CellRangeAddress(rr, rr, 0, hd.size() - 1));
+                    merge(s, rr, 0, rr, hd.size() - 1);
                     rr++;
                     continue;
                 }
@@ -275,7 +344,7 @@ public class CatalogWorkbookWriter {
                     styles.apply(s, rr, 3 + table.labels().size(), true, null);
                 }
                 if (row.merged) {
-                    s.addMergedRegion(new CellRangeAddress(rr, rr, 3, 2 + table.labels().size()));
+                    merge(s, rr, 3, rr, 2 + table.labels().size());
                 }
                 rr++;
             }
@@ -327,7 +396,7 @@ public class CatalogWorkbookWriter {
         List<String[]> info = List.of(
                 new String[]{"项目", "内容"},
                 new String[]{"源文件", String.valueOf(src.getFileName())},
-                new String[]{"PDF 类型", data.hasTextLayer() ? "文字版（含文字层）" : "扫描件（无文字层）"},
+                new String[]{"PDF 类型", pdfType(data)},
                 new String[]{"总页数", String.valueOf(data.pageCount())},
                 new String[]{"识别出参数表的页", String.valueOf(data.parsedPageCount())},
                 new String[]{"参数表数量", String.valueOf(data.tables().size())},
@@ -340,7 +409,21 @@ public class CatalogWorkbookWriter {
                 new String[]{"脚注条数", String.valueOf(data.footnotes().size())},
                 new String[]{"未识别页", data.skippedPages().isEmpty() ? "无"
                         : String.join("、", data.skippedPages().stream().limit(80).map(String::valueOf).toList())},
-                new String[]{"识别方式", "坐标级版面解析；表头中心线定列、底色块定分节；无 OCR / 视觉模型"},
+                new String[]{"图片型参数表页", data.imageTablePages().isEmpty() ? "无"
+                        : String.join("、", data.imageTablePages().stream().limit(80).map(String::valueOf).toList())},
+                new String[]{"图片型页说明", data.imageTablePages().isEmpty()
+                        ? "未发现「标题是参数表、内容却是图片」的页"
+                        : "上述页的内容以位图形式嵌入（整页截图/高清图片），没有文字层，"
+                        + "自动 OCR 也没能提取出可用的参数行；如需这些数据，请提供更清晰的版本，"
+                        + "或对照原图手工录入"},
+                new String[]{"OCR 识别页", data.ocrPages().isEmpty() ? "无"
+                        : String.join("、", data.ocrPages().stream().limit(80).map(String::valueOf).toList())},
+                new String[]{"OCR 页说明", data.ocrPages().isEmpty()
+                        ? "本次结果全部来自 PDF 文字层，字符级精确"
+                        : "上述页的参数表是位图，数据由 PP-OCR 从渲染图中识别后再走同一套版面解析；"
+                        + "字号与个别字符（如 0/O、1/l、°/o）可能误判，导入前请重点核对这几页"},
+                new String[]{"识别方式", "坐标级版面解析（表头中心线定列、底色块定分节）；"
+                        + "参数表为位图时启用 PP-OCR 识别文字，再走同一套版面逻辑"},
                 new String[]{"数值精度", "按原字符串小数位设置格式，10.0 / 0.50 / 1.18E-03 原样显示"},
                 new String[]{"生成时间", LocalDateTime.now().format(STAMP)},
                 new String[]{"AI 标识", "AI 辅助生成（MotorSizer），使用前请与原样册核对"});
@@ -362,6 +445,20 @@ public class CatalogWorkbookWriter {
         }
         s.setColumnWidth(0, 18 * 256);
         s.setColumnWidth(1, 88 * 256);
+    }
+
+    /** 「识别报告」里的 PDF 类型：把「文字版但参数表是图片」单独说清楚，避免与真正的扫描件混淆。 */
+    private String pdfType(ParsedCatalog data) {
+        boolean ocr = !data.ocrPages().isEmpty();
+        if (!data.hasTextLayer()) {
+            return ocr ? "扫描件（无文字层），已对参数表页启用 OCR" : "扫描件（无文字层）";
+        }
+        if (ocr && data.imageTablePages().isEmpty()) {
+            return "文字版，部分页的参数表以图片形式嵌入（已 OCR）";
+        }
+        return data.imageTablePages().isEmpty()
+                ? "文字版（含文字层）"
+                : "文字版，但参数表以图片形式嵌入";
     }
 
     /** 「识别报告」里的分节说明：每节命中多少行、保留还是丢弃，让过滤结果可追溯。 */

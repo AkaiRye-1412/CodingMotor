@@ -9,6 +9,9 @@ MotorSizer 免安装绿色包打包器（R-3 裁定 + WebView2 原生窗口）�
 """
 import os, subprocess, shutil, sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from jar_slim import slim_fat_jar  # noqa: E402  fat jar 瘦身（只留 win-x64 原生库）
+
 PKG = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(PKG))  # MotorSizer 项目根
 LOADER = os.path.join(PKG, "loader")
@@ -96,7 +99,13 @@ step(3, "jpackage app-image")
 if os.path.exists(DIST):
     shutil.rmtree(DIST)
 os.makedirs(APP_INPUT, exist_ok=True)
-shutil.copyfile(JAR, os.path.join(APP_INPUT, "motorsizer-app-1.0.0-SNAPSHOT.jar"))
+jar_in_input = os.path.join(APP_INPUT, "motorsizer-app-1.0.0-SNAPSHOT.jar")
+try:
+    new_size = slim_fat_jar(JAR, jar_in_input)
+    print(f"  瘦身后 jar：{new_size/1024/1024:.1f} MB（原 {os.path.getsize(JAR)/1024/1024:.1f} MB）")
+except Exception as ex:                                   # 瘦身失败绝不能挡住打包
+    print(f"  [警告] fat jar 瘦身失败，改用原始 jar：{ex}")
+    shutil.copyfile(JAR, jar_in_input)
 
 ico = os.path.join(ICONS, "motorsizer.ico")
 run([os.path.join(JAVA_HOME, "bin", "jpackage.exe"),

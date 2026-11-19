@@ -15,11 +15,14 @@ import java.util.Set;
  * @param tables       识别出的参数表
  * @param footnotes    脚注：编号 → 说明
  * @param skippedPages 未识别出参数表的页
+ * @param imageTablePages 其中「本该有参数表、但参数表是位图」的页（图片占比高且页面出现规格类标题）
+ * @param ocrPages     通过 OCR 才解析出参数表的页（数据来自图像识别，需重点核对）
  * @param sectionRows  分节名 → 数据行数（含被过滤掉的分节，保序）
  */
 public record ParsedCatalog(String source, int pageCount, int charCount, boolean hasTextLayer,
                             List<CatalogTable> tables, Map<Integer, String> footnotes,
-                            List<Integer> skippedPages, Map<String, Integer> sectionRows) {
+                            List<Integer> skippedPages, List<Integer> imageTablePages,
+                            List<Integer> ocrPages, Map<String, Integer> sectionRows) {
 
     /** 型号数（去重保序）。 */
     public int modelCount() {

@@ -163,9 +163,172 @@ class CatalogParserTest {
                 .isEqualTo("AKM200-W-B4-P");
         // 已有连字符时不叠成 --
         assertThat(CatalogWorkbookWriter.compactConfigWord("AUM2-S2-串联")).isEqualTo("AUM2-S2-S");
+        // 英文接法同理（客户图纸的配置列写 Parallel / Series）
+        assertThat(CatalogWorkbookWriter.compactConfigWord("ACD85-P-15-Parallel"))
+                .isEqualTo("ACD85-P-15-P");
+        assertThat(CatalogWorkbookWriter.compactConfigWord("ACD85-P-15-Series"))
+                .isEqualTo("ACD85-P-15-S");
+        // 词组里的 Parallel 不该被缩写
+        assertThat(CatalogWorkbookWriter.compactConfigWord("Parallel Shaft"))
+                .isEqualTo("Parallel Shaft");
         // 不含接法的型号原样保留
         assertThat(CatalogWorkbookWriter.compactConfigWord("AKH100-N-B2-L")).isEqualTo("AKH100-N-B2-L");
         assertThat(CatalogWorkbookWriter.compactConfigWord("AVM12-6.4")).isEqualTo("AVM12-6.4");
+    }
+
+    /**
+     * 参数名里的脚注标记要剥出来单独存：留在名字里就永远匹配不上字段字典，
+     * Excel 里也会出现 {@code Continuous Power Dissipation (NC) @100C[1]} 这种半截标记。
+     */
+    @Test
+    void stripsFootnoteMarkersFromParameterName() {
+        assertThat(CatalogParser.splitNameMarkers("Continuous Torque (NC) @100C[1]"))
+                .containsExactly("Continuous Torque (NC) @100C", "1");
+        // 中文全角括号、多个编号
+        assertThat(CatalogParser.splitNameMarkers("Resistance （2）")).containsExactly("Resistance", "2");
+        assertThat(CatalogParser.splitNameMarkers("Inductance [1,3]")).containsExactly("Inductance", "1,3");
+        // 括号里是文字描述而不是数字（NC / @25°C）时不能动
+        assertThat(CatalogParser.splitNameMarkers("Continuous Torque (NC)"))
+                .containsExactly("Continuous Torque (NC)", "");
+        // 整格只剩标记：名字在图上、文字层没取到，用占位符顶上
+        assertThat(CatalogParser.splitNameMarkers("[1]"))
+                .containsExactly(CatalogParser.NAMELESS, "1");
+        assertThat(CatalogParser.splitNameMarkers("")).containsExactly("", "");
+        // 上标脚注（PDF 里是真上标字符，不是 [3]）
+        assertThat(CatalogParser.splitNameMarkers("Inductance ±20%[³]"))
+                .containsExactly("Inductance ±20%", "3");
+        assertThat(CatalogParser.splitNameMarkers("Max. Speed⁴"))
+                .containsExactly("Max. Speed", "4");
+        // ℃ 与 °℃ 都还原成 °C，同一列里不该出现三种写法
+        assertThat(CatalogParser.splitNameMarkers("Continuous Torque @100℃"))
+                .containsExactly("Continuous Torque @100°C", "");
+        assertThat(CatalogParser.splitNameMarkers("Continuous Current @100°℃"))
+                .containsExactly("Continuous Current @100°C", "");
+    }
+
+    /** 图纸的「无单位」写 {@code -}，PDF/OCR 会退化成「一」「■」——统一归成半角横线。 */
+    @Test
+    void normalizesPlaceholderUnits() {
+        assertThat(CatalogParser.normalizeUnit("一")).isEqualTo("-");
+        assertThat(CatalogParser.normalizeUnit("■")).isEqualTo("-");
+        assertThat(CatalogParser.normalizeUnit("－")).isEqualTo("-");
+        // 真单位不能被误伤
+        assertThat(CatalogParser.normalizeUnit("Nm")).isEqualTo("Nm");
+        assertThat(CatalogParser.normalizeUnit("Ω")).isEqualTo("Ω");
+        assertThat(CatalogParser.normalizeUnit("")).isEmpty();
+    }
+
+    /** 图纸的表标题常带版次说明：{@code CRM0013-Preliminary} 的型号是 {@code CRM0013}。 */
+    @Test
+    void dropsDraftWordsFromModelName() {
+        assertThat(CatalogParser.cleanModel("CRM0013-Preliminary")).isEqualTo("CRM0013");
+        assertThat(CatalogParser.cleanModel("CRM0013-PRELIMINARY")).isEqualTo("CRM0013");
+        assertThat(CatalogParser.cleanModel("AXD120-初步")).isEqualTo("AXD120");
+        // 不含版次词的型号原样保留
+        assertThat(CatalogParser.cleanModel("AKM100-B4-D79")).isEqualTo("AKM100-B4-D79");
+        assertThat(CatalogParser.cleanModel("AUM2-S2")).isEqualTo("AUM2-S2");
+    }
+
+    /**
+     * OCR 会把同一行的「参数名」和「数值」排到两条基线上。还原后就是「有名无值」+
+     * 「无名有值」两行；不拼回去，Excel 里就会丢掉这个值（图纸里是 {@code Icn = 6.0}）。
+     */
+    @Test
+    void reunitesNameAndValueSplitAcrossBaselines() {
+        TableRow named = new TableRow();
+        named.oy = 300;
+        named.name = "Continuous Current (NC) @100C";
+        named.sym = "Icn";
+        named.unit = "Arms";
+
+        TableRow orphan = new TableRow();
+        orphan.oy = 292;                            // 同一行，基线差 8pt
+        orphan.name = CatalogParser.NAMELESS;
+        orphan.values.put("v0", "6.0");
+
+        List<TableRow> out = new CatalogParser(new PdfPageScanner())
+                .reuniteBrokenRows(List.of(named, orphan));
+
+        assertThat(out).hasSize(1);
+        assertThat(out.get(0).name()).isEqualTo("Continuous Current (NC) @100C");
+        assertThat(out.get(0).values()).containsEntry("v0", "6.0");
+    }
+
+    /** 拼不上的无名行若只有横线占位，整行没有信息，丢掉而不是留一行「（未识别） —」。 */
+    @Test
+    void dropsOrphanRowsWhoseValueIsJustADash() {
+        TableRow orphan = new TableRow();
+        orphan.oy = 500;
+        orphan.name = CatalogParser.NAMELESS;
+        orphan.values.put("v0", "—");
+
+        assertThat(new CatalogParser(new PdfPageScanner()).reuniteBrokenRows(List.of(orphan)))
+                .isEmpty();
+    }
+
+    /**
+     * 客户图纸：标题写着 SPECIFICATION，但整张参数表是贴进来的位图。
+     *
+     * <p>此时不能用「未识别到表头」敷衍过去——要能说清是「参数表本身是图片」，
+     * 用户才知道该换文字版样册、或按图手工录入。
+     */
+    @Test
+    void flagsSpecPageWhoseTableIsAnImage() throws Exception {
+        Path pdf = temp.resolve("drawing.pdf");
+        writeImageOnlySpecPdf(pdf);
+
+        ParsedCatalog parsed = new CatalogParser(new PdfPageScanner()).parse(pdf);
+
+        assertThat(parsed.tables()).isEmpty();
+        assertThat(parsed.skippedPages()).containsExactly(1);
+        assertThat(parsed.imageTablePages()).containsExactly(1);
+    }
+
+    /** 同样的整页大图，但没有规格标题：属普通图纸页，不该提示「参数表是图片」。 */
+    @Test
+    void plainDrawingPageIsNotReportedAsImageTable() throws Exception {
+        Path pdf = temp.resolve("plain-drawing.pdf");
+        writeImageOnlySpecPdf(pdf, "OUTLINE DIMENSIONS");
+
+        ParsedCatalog parsed = new CatalogParser(new PdfPageScanner()).parse(pdf);
+
+        assertThat(parsed.skippedPages()).containsExactly(1);
+        assertThat(parsed.imageTablePages()).isEmpty();
+    }
+
+    private void writeImageOnlySpecPdf(Path target) throws IOException {
+        writeImageOnlySpecPdf(target, "SPECIFICATION:");
+    }
+
+    /**
+     * 造一页「文字标题 + 整页位图」的图纸：位图占页面约 60%，文字层只有标题，
+     * 因此必然解析不出参数表——正是客户图纸最常见的样子。
+     */
+    private void writeImageOnlySpecPdf(Path target, String heading) throws IOException {
+        java.awt.image.BufferedImage bi =
+                new java.awt.image.BufferedImage(400, 400, java.awt.image.BufferedImage.TYPE_INT_RGB);
+        java.awt.Graphics2D g = bi.createGraphics();
+        g.setColor(java.awt.Color.WHITE);
+        g.fillRect(0, 0, 400, 400);
+        g.setColor(java.awt.Color.BLACK);
+        g.drawString("Model  Symbol  Unit  Value", 20, 40);
+        g.dispose();
+        java.io.ByteArrayOutputStream png = new java.io.ByteArrayOutputStream();
+        javax.imageio.ImageIO.write(bi, "png", png);
+
+        try (PDDocument doc = new PDDocument()) {
+            PDPage page = new PDPage(PDRectangle.A4);
+            doc.addPage(page);
+            PDType0Font font = PDType0Font.load(doc, Path.of(CJK_FONT).toFile());
+            org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject img =
+                    org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject
+                            .createFromByteArray(doc, png.toByteArray(), "table");
+            try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+                text(cs, font, 10, 50, 780, heading);
+                cs.drawImage(img, 50, 100, 500, 600);      // 30 万 pt² / A4 50.1 万 ≈ 60%
+            }
+            doc.save(target.toFile());
+        }
     }
 
     @Test
@@ -180,12 +343,17 @@ class CatalogParserTest {
         assertThat(parsed.modelCount()).isPositive();
         assertThat(parsed.parameterRows()).isGreaterThan(50);
         assertThat(parsed.footnotes()).isNotEmpty();
+        // 06 v2 起接法并入型号（AUM1-S1 + 串联 → AUM1-S1串联），标签不再等于裸的「串联」，
+        // 因此按「整本里既出现过串联列又出现过并联列」来断言。
+        assertThat(parsed.tables().stream().flatMap(t -> t.labels().stream()))
+                .anyMatch(l -> l.contains("串联"))
+                .anyMatch(l -> l.contains("并联"));
         for (CatalogTable t : parsed.tables()) {
-            assertThat(t.labels()).contains("串联").contains("并联");
+            assertThat(t.labels()).isNotEmpty();
             assertThat(t.model()).matches("[A-Z].*");
             // 只保留性能参数：机械参数 / 其他信息 / 编码器参数的分节行不应出现在结果里
             assertThat(t.rows().stream().filter(TableRow::isSection).map(TableRow::name))
-                    .allMatch(LayoutRules.KEEP_SECTIONS::contains);
+                    .allMatch(LayoutRules::isKeptSection);
         }
         assertThat(parsed.droppedRows()).isPositive();
         Path xlsx = temp.resolve("real.xlsx");

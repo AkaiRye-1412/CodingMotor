@@ -35,6 +35,18 @@ const picked = computed<File | null>(() => {
 const stats = computed(() => job.value?.stats ?? null)
 const isReady = computed(() => job.value?.status === 'READY')
 
+/** 参数表以位图嵌入、且自动 OCR 也没能提出数据的页。 */
+const imagePages = computed(() => stats.value?.imageTablePages ?? [])
+/** 靠 OCR 才拿到数据的页：结果可用，但要人工核对。 */
+const ocrPages = computed(() => stats.value?.ocrPages ?? [])
+const pdfTypeText = computed(() => {
+  if (!stats.value) return ''
+  const ocr = ocrPages.value.length > 0
+  if (!stats.value.hasTextLayer) return ocr ? '扫描件（已 OCR）' : '扫描件（无文字层）'
+  if (ocr) return '文字版（部分页参数表为图片，已 OCR）'
+  return imagePages.value.length ? '文字版（参数表为图片）' : '文字版'
+})
+
 function reset() {
   step.value = 1
   fileList.value = []
@@ -211,7 +223,7 @@ function statusType(status: string): 'success' | 'warning' | 'danger' {
         :closable="false"
         show-icon
         title="只做一件事：把样册里的参数表转成 Excel"
-        description="按表头「符号 / 单位 / 串联 / 并联」定位表格，按坐标还原列与分节；不做 OCR，请上传带文字层的 PDF。"
+        description="按表头「符号 / 单位 / 串联 / 并联」定位表格，按坐标还原列与分节；参数表被贴成图片（或整页扫描）时自动走 OCR，识别出的页会在结果里标出，请重点核对。"
       />
       <el-upload
         drag
@@ -297,13 +309,26 @@ function statusType(status: string): 'success' | 'warning' | 'danger' {
         <el-descriptions-item label="Excel 数据行">{{ stats?.dataRows }}</el-descriptions-item>
         <el-descriptions-item label="脚注条数">{{ stats?.footnoteCount }}</el-descriptions-item>
         <el-descriptions-item label="PDF 类型">
-          {{ stats?.hasTextLayer ? '文字版' : '扫描件（无文字层）' }}
+          {{ pdfTypeText }}
         </el-descriptions-item>
         <el-descriptions-item label="未识别页">
           <span v-if="stats?.skippedPages.length">{{ stats.skippedPages.join('、') }}</span>
           <span v-else class="muted">无</span>
         </el-descriptions-item>
+        <el-descriptions-item label="OCR 识别页">
+          <span v-if="ocrPages.length" class="ocr-text">{{ ocrPages.join('、') }}</span>
+          <span v-else class="muted">无</span>
+        </el-descriptions-item>
+        <el-descriptions-item label="参数表为图片的页">
+          <span v-if="imagePages.length" class="warn-text">{{ imagePages.join('、') }}</span>
+          <span v-else class="muted">无</span>
+        </el-descriptions-item>
       </el-descriptions>
+
+      <div v-if="ocrPages.length" class="ocr-note">
+        第 {{ ocrPages.join('、') }} 页的参数表是位图，数据由 OCR 从图片中识别后解析。
+        字号与个别字符（0/O、1/l、°/o）可能误判，导入前请重点核对这几页。
+      </div>
 
       <div class="sheet-note">
         Excel 含 <b>参数汇总</b>（长表/宽表）、<b>每型号原版式页</b>、<b>脚注说明</b> 与 <b>识别报告</b>。
@@ -393,5 +418,23 @@ function statusType(status: string): 'success' | 'warning' | 'danger' {
 }
 .muted {
   color: #909399;
+}
+.warn-text {
+  color: var(--el-color-warning);
+  font-weight: 600;
+}
+.ocr-text {
+  color: var(--el-color-primary);
+  font-weight: 600;
+}
+.ocr-note {
+  margin-bottom: 12px;
+  padding: 8px 12px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--el-color-primary);
+  background: var(--el-color-primary-light-9);
+  border-left: 3px solid var(--el-color-primary);
+  border-radius: 4px;
 }
 </style>

@@ -155,7 +155,7 @@ public class ImportService {
         }
         if (!original.toLowerCase(Locale.ROOT).endsWith(".pdf")) {
             throw new BusinessException(ErrorCode.IMPORT_FILE_REJECTED,
-                    "仅支持 PDF 文件（当前样册识别不做 OCR，图片无法解析）",
+                    "仅支持 PDF 文件（其他格式请先另存为 PDF 再上传）",
                     List.of(new FieldError("file", "不支持的文件类型：" + original)));
         }
         return original;
@@ -174,15 +174,23 @@ public class ImportService {
                 written.dataRows(),
                 parsed.footnotes().size(),
                 parsed.skippedPages(),
+                parsed.imageTablePages(),
+                parsed.ocrPages(),
                 excelNameOf(original),
                 messageOf(parsed));
     }
 
     private String messageOf(ParsedCatalog parsed) {
         if (parsed.tables().isEmpty()) {
+            if (!parsed.imageTablePages().isEmpty()) {
+                return "第 " + pagesText(parsed.imageTablePages())
+                        + " 页的参数表是图片（整页位图，无文字层），已尝试 OCR 但没能提取出参数行；"
+                        + "请对照原图手工录入，或换用文字版样册 PDF";
+            }
             return parsed.hasTextLayer()
                     ? "未识别到「符号 + 单位」表头的参数表，请查看 Excel 的「识别报告」页确认未识别页"
-                    : "PDF 无文字层（扫描件），本模块不做 OCR；请改用带文字层的样册 PDF";
+                    : "PDF 无文字层（扫描件），且未在图片中识别出「符号 + 单位」表头；"
+                      + "请确认该 PDF 每页都有清晰的参数表，或换用文字版样册";
         }
         StringBuilder sb = new StringBuilder()
                 .append("识别 ").append(parsed.tables().size()).append(" 张参数表")
@@ -194,10 +202,25 @@ public class ImportService {
         if (parsed.droppedRows() > 0) {
             sb.append("；已按分节过滤掉 ").append(parsed.droppedRows()).append(" 行非性能参数");
         }
+        if (!parsed.ocrPages().isEmpty()) {
+            sb.append("；第 ").append(pagesText(parsed.ocrPages()))
+                    .append(" 页数据由 OCR 从图片中识别，请重点核对");
+        }
+        if (!parsed.imageTablePages().isEmpty()) {
+            sb.append("；第 ").append(pagesText(parsed.imageTablePages()))
+                    .append(" 页参数表为图片，未能提取");
+        }
         if (!parsed.skippedPages().isEmpty()) {
             sb.append("；").append(parsed.skippedPages().size()).append(" 页未识别");
         }
         return sb.toString();
+    }
+
+    /** 页码列表转「2、5、9」：超过 20 页截断，避免提示语过长。 */
+    private String pagesText(List<Integer> pages) {
+        String joined = pages.stream().limit(20).map(String::valueOf)
+                .collect(java.util.stream.Collectors.joining("、"));
+        return pages.size() > 20 ? joined + " 等 " + pages.size() + " 页" : joined;
     }
 
     private String excelNameOf(String original) {

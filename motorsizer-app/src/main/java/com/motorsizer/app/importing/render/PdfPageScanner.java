@@ -1,10 +1,15 @@
 package com.motorsizer.app.importing.render;
 
 import org.apache.pdfbox.contentstream.PDFGraphicsStreamEngine;
+import org.apache.pdfbox.contentstream.operator.Operator;
+import org.apache.pdfbox.contentstream.operator.OperatorProcessor;
+import org.apache.pdfbox.cos.COSBase;
 import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.graphics.PDXObject;
 import org.apache.pdfbox.pdmodel.graphics.color.PDColor;
+import org.apache.pdfbox.pdmodel.graphics.form.PDFormXObject;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImage;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.apache.pdfbox.text.TextPosition;
@@ -33,14 +38,21 @@ import java.util.List;
 @Component
 public class PdfPageScanner {
 
-    /** 一页的扫描结果。 */
-    public record PageScan(List<TextRun> runs, List<FillBand> bands, int charCount) {
+    /**
+     * 一页的扫描结果。
+     *
+     * @param runs           带坐标的文字段
+     * @param bands          分节底色块
+     * @param charCount      有效字符数
+     * @param imageCoverage  位图覆盖页面的面积比例（0~1），用于识别「参数表是图片」
+     */
+    public record PageScan(List<TextRun> runs, List<FillBand> bands, int charCount, double imageCoverage) {
     }
 
     /** 扫描指定页（1-based）。 */
     public PageScan scan(PDDocument doc, int pageNumber) throws IOException {
         if (pageNumber < 1 || pageNumber > doc.getNumberOfPages()) {
-            return new PageScan(List.of(), List.of(), 0);
+            return new PageScan(List.of(), List.of(), 0, 0);
         }
         List<Glyph> glyphs = readGlyphs(doc, pageNumber);
         int chars = 0;
@@ -49,7 +61,11 @@ public class PdfPageScanner {
                 chars += g.text().strip().length();
             }
         }
-        return new PageScan(buildRuns(glyphs), readBands(doc.getPage(pageNumber - 1)), chars);
+        PDPage page = doc.getPage(pageNumber - 1);
+        PageGraphics gfx = readGraphics(page);
+        double pageArea = page.getCropBox().getWidth() * page.getCropBox().getHeight();
+        double coverage = pageArea <= 0 ? 0 : Math.min(1.0, gfx.imageArea() / pageArea);
+        return new PageScan(buildRuns(glyphs), gfx.bands(), chars, coverage);
     }
 
     // ---------------------------------------------------------------- 文字
@@ -188,24 +204,71 @@ public class PdfPageScanner {
         out.add(TextRun.of(text, x0, x1, oy, Math.round(size * 10) / 10.0));
     }
 
-    // ---------------------------------------------------------------- 色块
+    // ---------------------------------------------------------------- 色块与位图
 
-    private List<FillBand> readBands(PDPage page) throws IOException {
-        BandScanner scanner = new BandScanner(page);
-        scanner.processPage(page);
-        return scanner.bands;
+    /** 一页的图形层统计：分节色块 + 位图总面积。 */
+    private record PageGraphics(List<FillBand> bands, double imageArea) {
     }
 
-    /** 收集浅蓝填充矩形：与 pdf2excel.py 的 get_drawings() 过滤条件一一对应。 */
+    private PageGraphics readGraphics(PDPage page) throws IOException {
+        BandScanner scanner = new BandScanner(page);
+        scanner.processPage(page);
+        return new PageGraphics(scanner.bands, scanner.imageArea);
+    }
+
+    /** 收集浅蓝填充矩形与位图绘制面积：与 pdf2excel.py 的 get_drawings() 过滤条件一一对应。 */
     private static final class BandScanner extends PDFGraphicsStreamEngine {
 
         private final double pageHeight;
         private final List<FillBand> bands = new ArrayList<>();
         private Rectangle2D.Double path;
+        /** 位图覆盖面积累计（pt²）。 */
+        private double imageArea;
 
         BandScanner(PDPage page) {
             super(page);
             this.pageHeight = page.getCropBox().getHeight();
+            // 默认的 Do 处理器必须先把图解码成 PDImage 才会回调 drawImage：
+            // 样册里的图是 JPEG2000，PDFBox 缺 JAI 解码器时整张图被跳过，面积就统计成 0。
+            // 这里直接读 Do 操作符 + 当前 CTM，不依赖解码器，也不会被裁剪路径影响。
+            addOperator(new OperatorProcessor() {
+                @Override
+                public void process(Operator operator, List<COSBase> arguments) throws IOException {
+                    if (arguments.isEmpty()) {
+                        return;
+                    }
+                    COSBase base = arguments.get(0);
+                    if (!(base instanceof COSName)) {
+                        return;
+                    }
+                    PDXObject xobject;
+                    try {
+                        xobject = getResources().getXObject((COSName) base);
+                    } catch (IOException ex) {
+                        return;                    // 资源损坏：跳过这张，不影响整页
+                    }
+                    if (xobject instanceof PDImage) {
+                        addImageArea();
+                    } else if (xobject instanceof PDFormXObject) {
+                        showForm((PDFormXObject) xobject);   // 递归：Form 里的位图同样计入
+                    }
+                }
+
+                @Override
+                public String getName() {
+                    return "Do";
+                }
+            });
+        }
+
+        /** 当前 CTM 下这张图的落纸面积（图像绘制在单位正方形上，面积 = |det|）。 */
+        private void addImageArea() {
+            Matrix ctm = getGraphicsState().getCurrentTransformationMatrix();
+            double area = Math.abs(ctm.getScaleX() * ctm.getScaleY()
+                    - ctm.getShearX() * ctm.getShearY());
+            if (Double.isFinite(area) && area > 0) {
+                imageArea += area;
+            }
         }
 
         @Override
@@ -267,7 +330,7 @@ public class PdfPageScanner {
 
         @Override
         public void drawImage(PDImage pdImage) {
-            // 图表按图片绘制，与表格解析无关
+            // 面积统计统一在 Do 操作符处理里做（见构造器）：这里再算一次会重复累加。
         }
 
         @Override

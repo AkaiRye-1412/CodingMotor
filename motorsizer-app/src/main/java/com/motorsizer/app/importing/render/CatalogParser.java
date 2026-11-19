@@ -1,8 +1,16 @@
 package com.motorsizer.app.importing.render;
 
+import com.motorsizer.app.importing.ocr.OcrEngine;
+import com.motorsizer.app.importing.ocr.OcrTextLine;
 import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.rendering.ImageType;
+import org.apache.pdfbox.rendering.PDFRenderer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
+import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -17,20 +25,25 @@ import java.util.regex.Pattern;
 /**
  * 样册 PDF → 参数表结构（pdf2excel.py 的 Java 移植）。
  *
- * <p>纯程序化版面解析，不用 OCR、不用视觉模型：
+ * <p>主链路是纯程序化版面解析，不用视觉模型：
  * <ol>
- *   <li>表头定位：含「符号 + 单位」的行视为一格表的表头（只有「单位 + 接法」也接受）；</li>
+ *   <li>表头定位：含「符号 + 单位」的行视为一格表的表头（只有「单位 + 接法」也接受；英文 Symbol/Unit 同样认）；</li>
  *   <li>列边界：由表头 token 的中心线取中点，自适应 5 列 / 10 列 / 任意列；</li>
  *   <li>配置列：单型号表 → 串联/并联；多型号对照表 → 型号行覆盖哪些接法列就归给哪个型号；</li>
- *   <li>分节：表头左侧的分节名 + 表内浅蓝底色块所在行；</li>
+ *   <li>分节：表头左侧的分节名 + 表内浅蓝底色块所在行；没有底色块的位图表格按分节标题的命名形态判断；</li>
  *   <li>脚注：表块下方行首的小字号独立数字为编号，续行按左缘与行距拼接。</li>
  * </ol>
+ *
+ * <p>唯一的例外是「参数表本身是位图」的页：文字层里没有表，才渲染该页走 OCR，
+ * 再把识别结果当成普通文字行重跑上面这套逻辑（见 {@link #ocrRuns}）。
  *
  * <p>方法名与脚本里的函数一一对应（{@code group_lines} → {@link #groupLines} 等），
  * 改算法时请同步两份实现，并用真实样册回归（`CatalogParserTest`）。
  */
 @Component
 public class CatalogParser {
+
+    private static final Logger log = LoggerFactory.getLogger(CatalogParser.class);
 
     private static final Pattern FOOTNOTE_NO = Pattern.compile("\\d{1,2}");
     private static final Pattern NOTE_NO = Pattern.compile("[1-9]");
@@ -43,10 +56,21 @@ public class CatalogParser {
             "安装示意图", "正常安装", "倒装", "侧装", "尺寸图", "转矩(", "转速(",
             "直流母线", "持续转矩", "峰值转矩", "转矩（", "转速（");
 
-    private final PdfPageScanner scanner;
+    /** OCR 出的字高约为字号的 0.72（同 PDF 的字形框口径）。 */
+    private static final double OCR_CAP_RATIO = 0.72;
 
+    private final PdfPageScanner scanner;
+    private final OcrEngine ocrEngine;
+
+    /** 测试与无 OCR 场景：只做文字层解析。 */
     public CatalogParser(PdfPageScanner scanner) {
+        this(scanner, null);
+    }
+
+    @Autowired
+    public CatalogParser(PdfPageScanner scanner, OcrEngine ocrEngine) {
         this.scanner = scanner;
+        this.ocrEngine = ocrEngine;
     }
 
     // ---------------------------------------------------------------- 入口
@@ -56,74 +80,328 @@ public class CatalogParser {
             List<CatalogTable> tables = new ArrayList<>();
             Map<Integer, String> notes = new LinkedHashMap<>();
             List<Integer> skipped = new ArrayList<>();
+            // 未识别页里「参数表本身是位图」的页：图片铺满页面且页面出现规格类标题
+            List<Integer> imageTablePages = new ArrayList<>();
+            // 真的跑了 OCR 并成功出表的页：这些页的数据是「看出来的」，不是「读出来的」，要重点核对
+            List<Integer> ocrPages = new ArrayList<>();
             // 分节 → 数据行数（含被丢弃的分节，用于「识别报告」里说明过滤掉多少）
             Map<String, Integer> sectionRows = new LinkedHashMap<>();
+            // 图片占比达标的页：留给「整本一张表都没有」时的兜底 OCR
+            List<Integer> candidates = new ArrayList<>();
             int chars = 0;
+            int ocrPagesUsed = 0;
+            int pageCount = doc.getNumberOfPages();
 
-            for (int pno = 1; pno <= doc.getNumberOfPages(); pno++) {
+            for (int pno = 1; pno <= pageCount; pno++) {
                 PdfPageScanner.PageScan scan = scanner.scan(doc, pno);
                 chars += scan.charCount();
-                List<FillBand> bands = scan.bands();
+                boolean ocrPage = false;
 
-                List<TextLine> probe = groupLines(withinX(scan.runs(), Double.MAX_VALUE));
-                List<Integer> hs = headersIn(probe);
-                if (hs.isEmpty()) {
-                    skipped.add(pno);
-                    continue;
-                }
-
-                // 表右边界：优先取覆盖表头行的色块右缘（= 表格宽度），退化为最窄色块
-                double headerY = probe.get(hs.get(0)).oy();
-                double right = 0;
-                for (FillBand b : bands) {
-                    if (b.y0() - 20 <= headerY && headerY <= b.y1() + 6) {
-                        right = Math.max(right, b.x1());
+                int got = parseTablesInPage(pno, scan.runs(), scan.bands(), false,
+                        tables, notes, sectionRows);
+                // 文字层里没有表，但这页看着就是「参数表被贴成了图片」：渲染成图跑一次 OCR，
+                // 把识别结果当成普通文字行重跑同一套版面逻辑（列边界、分节、脚注都不变）。
+                if (got == 0 && ocrPagesUsed < LayoutRules.OCR_MAX_PAGES && isImageSpecPage(scan)) {
+                    List<TextRun> ocr = ocrRuns(doc, pno);
+                    if (!ocr.isEmpty()) {
+                        ocrPagesUsed++;
+                        int fromOcr = parseTablesInPage(pno, ocr, scan.bands(), true,
+                                tables, notes, sectionRows);
+                        if (fromOcr > 0) {
+                            got = fromOcr;
+                            ocrPage = true;
+                        }
                     }
                 }
-                if (right <= 0 && !bands.isEmpty()) {
-                    right = bands.stream().mapToDouble(FillBand::x1).min().orElse(0);
-                }
-                if (right <= 0) {
-                    right = probe.get(hs.get(0)).runs().stream()
-                            .mapToDouble(TextRun::x1).max().orElse(0) + 15;
-                }
-
-                List<TextLine> lines = groupLines(withinX(scan.runs(), right));
-                List<Integer> headers = headersIn(lines);
-
-                int got = 0;
-                for (int hi : headers) {
-                    Columns cols = buildColumns(lines.get(hi), right);
-                    Map<String, List<Integer>> groups = modelGroups(lines, hi, cols);
-                    String model = namesFromTitle(lines, hi, groups);
-                    Block block = parseBlock(lines, hi, cols);
-                    if (block.rows.stream().filter(r -> !r.name.isEmpty()).count()
-                            < LayoutRules.MIN_NAMED_ROWS) {
-                        continue;
-                    }
-                    List<TableRow> rows = attachContinuations(block.rows);
-                    rows = markSections(rows, lines.get(hi), bands);
-                    List<String> labels = columnLabels(cols, groups);
-                    rows = mergeLabelRows(rows);
-                    rows = mergeCells(rows);
-                    // 分节过滤放在所有行合并之后：这样报告里的「分节明细/丢弃行数」与
-                    // 「参数行数」口径一致（都是合并后的行数），不会出现两边加起来对不上的情况。
-                    rows = keepWantedSections(rows, sectionRows);
-                    if (rows.stream().allMatch(r -> r.values.isEmpty())) {
-                        continue;
-                    }
-                    tables.add(new CatalogTable(pno, model, labels, cols.configTexts(), rows));
-                    notes.putAll(parseFootnotes(lines, block.end));
-                    got++;
+                if (scan.imageCoverage() >= LayoutRules.OCR_FALLBACK_COVERAGE) {
+                    candidates.add(pno);
                 }
                 if (got == 0) {
                     skipped.add(pno);
+                    markImageTablePage(imageTablePages, pno, scan);
+                } else if (ocrPage) {
+                    // 只在真的出表时登记：OCR 跑了但没解析出参数表的页，报「图片型参数表」更有意义
+                    ocrPages.add(pno);
                 }
             }
+
+            // 兜底的第二遍：整本一张表都没解析出来 —— 这多半是客户图纸或扫描件，
+            // 文字层只剩标题栏套话，而「页面有没有 SPECIFICATION 标题」根本判不了（标题本身就在图片里，
+            // 如 ACD85 那张 Symbol/Unit 表）。此时改用「图片占比」作唯一判据，逐页试 OCR。
+            if (tables.isEmpty() && !candidates.isEmpty()) {
+                for (int pno : candidates) {
+                    if (ocrPagesUsed >= LayoutRules.OCR_MAX_PAGES) {
+                        break;
+                    }
+                    List<TextRun> ocr = ocrRuns(doc, pno);
+                    if (ocr.isEmpty()) {
+                        continue;
+                    }
+                    ocrPagesUsed++;
+                    List<FillBand> bands = scanner.scan(doc, pno).bands();
+                    if (parseTablesInPage(pno, ocr, bands, true, tables, notes, sectionRows) > 0) {
+                        ocrPages.add(pno);
+                        skipped.remove(Integer.valueOf(pno));
+                        imageTablePages.remove(Integer.valueOf(pno));
+                    }
+                }
+            }
+
             // 有文字层的判据：整本字符量够多，或至少解析出了参数表（单页短样册字符数可能很少）
             boolean hasText = chars > 500 || !tables.isEmpty();
-            return new ParsedCatalog(pdf.toString(), doc.getNumberOfPages(), chars, hasText,
-                    tables, notes, skipped, sectionRows);
+            return new ParsedCatalog(pdf.toString(), pageCount, chars, hasText,
+                    tables, notes, skipped, imageTablePages, ocrPages, sectionRows);
+        }
+    }
+
+    /**
+     * 解析一页里的所有参数表，结果并入入参集合；返回本次解析出的表数。
+     *
+     * <p>第一遍传文字层的 runs（{@code ocrMode=false}），OCR 页传识别结果（{@code ocrMode=true}）——
+     * 两条路径只差「行距上限」与「列边界微调」两个开关，其余逻辑完全共用。
+     */
+    private int parseTablesInPage(int pno, List<TextRun> runs, List<FillBand> bands, boolean ocrMode,
+                                  List<CatalogTable> tables, Map<Integer, String> notes,
+                                  Map<String, Integer> sectionRows) {
+        List<TextLine> probe = groupLines(withinX(runs, Double.MAX_VALUE));
+        List<Integer> hs = headersIn(probe);
+        if (hs.isEmpty()) {
+            return 0;
+        }
+
+        // 表右边界：优先取覆盖表头行的色块右缘（= 表格宽度），退化为最窄色块
+        double headerY = probe.get(hs.get(0)).oy();
+        double right = 0;
+        for (FillBand b : bands) {
+            if (b.y0() - 20 <= headerY && headerY <= b.y1() + 6) {
+                right = Math.max(right, b.x1());
+            }
+        }
+        if (right <= 0 && !bands.isEmpty()) {
+            right = bands.stream().mapToDouble(FillBand::x1).min().orElse(0);
+        }
+        if (right <= 0) {
+            if (ocrMode) {
+                // 无底色块的位图表格：表头最后一列（Parallel/L）右侧还有整列数值，
+                // 而表格右边常并排着曲线图。用表头列距推「下一列」的位置，正好落在值列右缘。
+                TextLine head = probe.get(hs.get(0));
+                double maxX1 = head.runs().stream().mapToDouble(TextRun::x1).max().orElse(0);
+                right = maxX1 + columnStep(head);
+            } else {
+                right = probe.get(hs.get(0)).runs().stream()
+                        .mapToDouble(TextRun::x1).max().orElse(0) + 15;
+            }
+        }
+
+        List<TextLine> lines = groupLines(withinX(runs, right));
+        List<Integer> headers = headersIn(lines);
+
+        int got = 0;
+        for (int hi : headers) {
+            Columns cols = buildColumns(lines.get(hi), right, ocrMode);
+            Map<String, List<Integer>> groups = modelGroups(lines, hi, cols);
+            String model = namesFromTitle(lines, hi, groups);
+            Block block = parseBlock(lines, hi, cols, ocrMode
+                    ? LayoutRules.BLOCK_LINE_GAP_OCR : LayoutRules.BLOCK_LINE_GAP);
+            if (block.rows.stream().filter(r -> !r.name.isEmpty()).count()
+                    < LayoutRules.MIN_NAMED_ROWS) {
+                continue;
+            }
+            List<TableRow> rows = attachContinuations(reuniteBrokenRows(block.rows));
+            rows = markSections(rows, lines.get(hi), bands);
+            rows = mergeWrappedNames(rows);
+            List<String> labels = columnLabels(cols, groups);
+            rows = mergeLabelRows(rows);
+            rows = mergeCells(rows);
+            // 分节过滤放在所有行合并之后：这样报告里的「分节明细/丢弃行数」与
+            // 「参数行数」口径一致（都是合并后的行数），不会出现两边加起来对不上的情况。
+            rows = keepWantedSections(rows, sectionRows);
+            if (rows.stream().allMatch(r -> r.values.isEmpty())) {
+                continue;
+            }
+            tables.add(new CatalogTable(pno, model, labels, cols.configTexts(), rows));
+            notes.putAll(parseFootnotes(lines, block.end));
+            got++;
+        }
+        return got;
+    }
+
+    /**
+     * 单位列归一：整格只有一个横线类字符时统一成半角 {@code -}。
+     *
+     * <p>「无单位」在样册里写作 {@code -}，OCR 极容易读成汉字「一」（笔画一模一样）；
+     * 更差的情况是退化成方块 {@code ■} —— 到了 Excel 里就是
+     * {@code Pole Number | 2p | ■ | 8}，看着像乱码。
+     */
+    static String normalizeUnit(String unit) {
+        if (unit.isEmpty()) {
+            return unit;
+        }
+        for (int i = 0; i < unit.length(); i++) {
+            if ("-－—–_─一■□▪▫●○◆◇".indexOf(unit.charAt(i)) < 0) {
+                return unit;
+            }
+        }
+        return "-";
+    }
+
+    /** 上标数字：PDF 把脚注号排成上标时，文字层里就是这些字符。 */
+    private static final String SUPERSCRIPTS = "⁰¹²³⁴⁵⁶⁷⁸⁹";
+
+    /** 度数符号的两种 OCR 写法：{@code ℃}（U+2103）与重复的 {@code °℃}，都还原成 {@code °C}。 */
+    private static final Pattern DEGREE = Pattern.compile("°\\s*℃|℃");
+
+    /** 参数名末端的裸上标脚注号（{@code Max. Speed⁴}、{@code Axial Runout⁵}）。 */
+    private static final Pattern TRAILING_SUPERSCRIPT = Pattern.compile("[⁰¹²³⁴⁵⁶⁷⁸⁹]{1,2}$");
+
+    /** 文本归一：度数符号统一写法。参数名与单位都要过一遍。 */
+    static String normalizeText(String text) {
+        if (text == null || text.isEmpty()) {
+            return "";
+        }
+        return DEGREE.matcher(text).replaceAll("°C").strip();
+    }
+
+    /**
+     * 参数名里的脚注标记：{@code [1]}、{@code (2)}、{@code （3）}、{@code [1,2]}、{@code [³]}。
+     *
+     * <p>样册把脚注号排成上标，PDF 文字层里可能是普通的 {@code [1]}，也可能是
+     * 上标字符 {@code [³]}；OCR 后中英文括号都可能出现。
+     */
+    private static final Pattern NAME_MARKER = Pattern.compile(
+            "[\\[\\(（]\\s*[0-9⁰¹²³⁴⁵⁶⁷⁸⁹]{1,2}"
+                    + "(?:\\s*[,，]\\s*[0-9⁰¹²³⁴⁵⁶⁷⁸⁹]{1,2})*\\s*[\\]\\)）]");
+
+    /** 「参数名在图上、文字层没取到」时的占位名（不能留空，见 {@link #splitNameMarkers}）。 */
+    static final String NAMELESS = "（未识别）";
+
+    /**
+     * 剥离参数名里的脚注标记，返回 {@code [干净参数名, 编号串]}。
+     *
+     * <p>整格只剩标记（{@code [1]}）时给「（未识别）」占位，而不是留空 —— 留空会被
+     * {@link #attachContinuations} 当成上一行的续行，把一个独立参数的值
+     * （图纸里 {@code Continuous Current 6.0}）粘到邻行（{@code Te 6.90}）上去，
+     * 变成「6.90；6.0」，比留个占位符难查得多。
+     */
+    static String[] splitNameMarkers(String name) {
+        if (name == null || name.isEmpty()) {
+            return new String[]{"", ""};
+        }
+        String source = normalizeText(name);
+        List<String> marks = new ArrayList<>();
+        StringBuilder clean = new StringBuilder();
+        Matcher m = NAME_MARKER.matcher(source);
+        int last = 0;
+        while (m.find()) {
+            clean.append(source, last, m.start());
+            marks.add(digitsOf(m.group()));
+            last = m.end();
+        }
+        clean.append(source.substring(last));
+        String text = clean.toString().replaceAll("\\s+", " ").strip();
+
+        // 括号外的裸上标：`Max. Speed⁴` 的 4 也是脚注号
+        Matcher tail = TRAILING_SUPERSCRIPT.matcher(text);
+        if (tail.find()) {
+            marks.add(digitsOf(tail.group()));
+            text = text.substring(0, tail.start()).strip();
+        }
+
+        if (text.isEmpty()) {
+            return new String[]{marks.isEmpty() ? "" : NAMELESS, String.join(",", marks)};
+        }
+        return new String[]{rstrip(text, " -—/"), String.join(",", marks)};
+    }
+
+    /** 取字符串里的数字（上标数字先还原），多个编号用逗号连。 */
+    private static String digitsOf(String raw) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < raw.length(); i++) {
+            char c = raw.charAt(i);
+            int sup = SUPERSCRIPTS.indexOf(c);
+            if (sup >= 0) {
+                sb.append((char) ('0' + sup));
+            } else if (Character.isDigit(c)) {
+                sb.append(c);
+            } else if ((c == ',' || c == '，') && sb.length() > 0) {
+                sb.append(',');
+            }
+        }
+        return sb.toString();
+    }
+
+    /**
+     * 记录「参数表是位图」的页：位图铺满页面（≥ {@link LayoutRules#IMAGE_PAGE_COVERAGE}），
+     * 且页面文字里出现 SPECIFICATION / 规格 / 参数表 之类的标题。
+     *
+     * <p>只靠图片面积不够——样册里的整页曲线图、图纸也满足面积条件；标题关键词把
+     * 「本该有参数表、但表被贴成了图片」这一类挑出来，才值得提示用户。
+     */
+    private void markImageTablePage(List<Integer> target, int pno, PdfPageScanner.PageScan scan) {
+        if (isImageSpecPage(scan)) {
+            target.add(pno);
+        }
+    }
+
+    /**
+     * 该页是否「位图为主 + 带参数表标题」，也就是值得跑 OCR 的页。
+     *
+     * <p>两种情况：
+     * <ul>
+     *   <li>位图铺满页面，且文字层里出现 SPECIFICATION / 规格 / 参数表 之类的标题
+     *       —— 典型是「文字版图纸里把参数表贴成了图片」；</li>
+     *   <li>位图铺满页面，且整页几乎没有任何文字（纯扫描页）—— 没有文字层可丢，
+     *       OCR 是唯一出路，交给表头校验来兜底。</li>
+     * </ul>
+     * 只靠图片面积不够：样册里的整页曲线图、尺寸图也满足面积条件。
+     */
+    private boolean isImageSpecPage(PdfPageScanner.PageScan scan) {
+        if (scan.imageCoverage() < LayoutRules.IMAGE_PAGE_COVERAGE) {
+            return false;
+        }
+        StringBuilder text = new StringBuilder();
+        for (TextRun r : scan.runs()) {
+            text.append(r.text());            // 不加分隔符：标题可能被拆成多个 run
+        }
+        if (text.toString().trim().length() <= 3) {
+            return true;                      // 纯扫描页：一个字都没有，没有文字层可丢，直接试
+        }
+        return LayoutRules.SPEC_TITLE_PATTERN.matcher(text.toString()).find();
+    }
+
+    /**
+     * 渲染该页并 OCR，把结果换算成 PDF 点坐标的 {@link TextRun}。
+     *
+     * <p>坐标系：OCR 给的是像素（左上原点），页面逻辑坐标是 pt（左上原点），
+     * 故像素 × 72 / dpi 即为 pt；基线取文字框底边，字号按字高 × 0.72 估算。
+     */
+    private List<TextRun> ocrRuns(PDDocument doc, int pageNumber) {
+        if (ocrEngine == null || !ocrEngine.available()) {
+            return List.of();
+        }
+        try {
+            BufferedImage image = new PDFRenderer(doc)
+                    .renderImageWithDPI(pageNumber - 1, LayoutRules.OCR_DPI, ImageType.RGB);
+            double toPt = 72.0 / LayoutRules.OCR_DPI;
+            // 小于 10px 的框基本是表格线/噪点，交给识别只会产生乱码
+            List<OcrTextLine> lines = ocrEngine.recognize(image, 10);
+            if (lines.isEmpty()) {
+                return List.of();
+            }
+            List<TextRun> runs = new ArrayList<>(lines.size());
+            for (OcrTextLine line : lines) {
+                double size = Math.max(3.0, line.height() * toPt * OCR_CAP_RATIO);
+                // 用框中心而不是底边：不同字母（y/g/p 有下伸部）会让底边相差 1~2pt，
+                // 超过 BASELINE_TOLERANCE 后同一行会被拆开，表头的 Symbol 与 Unit 就凑不到一起。
+                double baseline = (line.y0() + line.height() / 2.0) * toPt;
+                runs.add(TextRun.of(line.text(), line.x0() * toPt, line.x1() * toPt,
+                        baseline, Math.round(size * 10) / 10.0));
+            }
+            log.info("第 {} 页文字层无参数表，OCR 识别出 {} 行", pageNumber, runs.size());
+            return runs;
+        } catch (IOException | RuntimeException ex) {
+            log.warn("第 {} 页 OCR 失败：{}", pageNumber, ex.toString());
+            return List.of();
         }
     }
 
@@ -208,13 +486,41 @@ public class CatalogParser {
                 continue;
             }
             var tokens = ln.tokens();
-            if (tokens.contains("符号") && tokens.contains("单位")) {
+            // 中文样册用「符号 / 单位」，客户图纸（含 OCR 出来的）用 Symbol / Unit
+            if (hasToken(tokens, "符号", "symbol") && hasToken(tokens, "单位", "unit")) {
                 out.add(i);
-            } else if (tokens.contains("单位") && tokens.stream().anyMatch(LayoutRules.CONFIG_WORDS::contains)) {
+            } else if (hasToken(tokens, "单位", "unit")
+                    && tokens.stream().anyMatch(LayoutRules.CONFIG_WORDS::contains)) {
                 out.add(i);
             }
         }
         return out;
+    }
+
+    /** 表头相邻列的中心距（取中位数），用于无底色块时推断「值列」在表头右侧多远。 */
+    private static double columnStep(TextLine header) {
+        List<Double> cxs = header.runs().stream().map(TextRun::cx).sorted().toList();
+        if (cxs.size() < 2) {
+            return 60.0;
+        }
+        List<Double> gaps = new ArrayList<>();
+        for (int i = 1; i < cxs.size(); i++) {
+            gaps.add(cxs.get(i) - cxs.get(i - 1));
+        }
+        gaps.sort(Double::compare);
+        return Math.max(20.0, gaps.get(gaps.size() / 2));
+    }
+
+    /** 表头 token 匹配（忽略大小写，用于兼容 Symbol/Unit 与 符号/单位）。 */
+    private static boolean hasToken(java.util.Collection<String> tokens, String... names) {
+        for (String t : tokens) {
+            for (String n : names) {
+                if (t.equalsIgnoreCase(n)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     // ---------------------------------------------------------------- 列
@@ -233,19 +539,70 @@ public class CatalogParser {
             return null;
         }
 
+        /**
+         * 文字该归哪一列：**优先看左缘**，中心点只作兜底。
+         *
+         * <p>为什么不能只看中心：宽单位（{@code Vpeak/(m/s)}、{@code N/Sqrt(W)}）的中心会越到
+         * 值列去，整段单位就被搬进「值」，变成 {@code Vpeak/(m/s)356}——单位丢失、数值被污染。
+         *
+         * <p>为什么左缘还要修正：OCR 的检测框会整体左偏零点几 pt，符号 {@code Fcn} 的左缘
+         * 落进参数名列最后 0.6pt 里，按左缘硬判就整行串位。所以「左缘贴近本列右边界」
+         * 时再看一眼——只有**文字主体大半已经在下一列**才算下一列的内容；右对齐的短数值
+         * （{@code 磁吸力} 的 {@code 0}）左缘离右边界也近，但它一点都没越界，不能被推走。
+         */
+        String of(TextRun run) {
+            double x0 = run.x0();
+            double width = Math.max(0.1, run.x1() - x0);
+            for (int i = 0; i < columns.size(); i++) {
+                Column c = columns.get(i);
+                if (c.lo() <= x0 && x0 < c.hi()) {
+                    if (i + 1 < columns.size() && x0 > c.hi() - LayoutRules.COLUMN_EDGE_TOLERANCE) {
+                        Column next = columns.get(i + 1);
+                        double insideNext = Math.min(run.x1(), next.hi()) - Math.max(x0, next.lo());
+                        if (insideNext >= width * 0.5) {
+                            return next.name();
+                        }
+                    }
+                    return c.name();
+                }
+            }
+            return at(run.cx());
+        }
+
         List<String> configTexts() {
             return configs.stream().map(TextRun::token).toList();
         }
     }
 
     /** 由表头 token 的中心线推导列边界。 */
+    /** 按表头文字取列锚点（中文/英文写法都认）。 */
+    private static TextRun pickRun(Map<String, TextRun> byText, String... names) {
+        for (String name : names) {
+            for (Map.Entry<String, TextRun> e : byText.entrySet()) {
+                if (e.getKey().equalsIgnoreCase(name)) {
+                    return e.getValue();
+                }
+            }
+        }
+        return null;
+    }
+
     Columns buildColumns(TextLine header, double rightEdge) {
+        return buildColumns(header, rightEdge, false);
+    }
+
+    /**
+     * @param tightUnitColumn 单位列右界取「单位右缘与值列左缘的中点」。
+     *                         仅用于 OCR 页：图纸的数值与表头 x 几乎重合，
+     *                         按中心线切会把数值判进单位列；样册用的是中心线口径，不能改（会破坏型号分组）。
+     */
+    Columns buildColumns(TextLine header, double rightEdge, boolean tightUnitColumn) {
         Map<String, TextRun> byText = new LinkedHashMap<>();
         for (TextRun r : header.runs()) {
             byText.putIfAbsent(r.token(), r);
         }
-        TextRun sym = byText.get("符号");
-        TextRun unit = byText.get("单位");
+        TextRun sym = pickRun(byText, "符号", "symbol");
+        TextRun unit = pickRun(byText, "单位", "unit");
         // 接法列：表头里位于「单位」右侧的所有 token。
         // 不能只认 CONFIG_WORDS（串联/并联/单列/双列）——样册也用 L/H、A/B 这类字母标列，
         // 认不出就退化成「整表一列『值』」，数值会被并进单位列（AKH100 系列就是这样丢的）。
@@ -279,7 +636,11 @@ public class CatalogParser {
         }
         double firstCfgLeft = configs.size() > 1
                 ? configs.get(0).cx() - (configs.get(1).cx() - configs.get(0).cx()) / 2
-                : configs.get(0).cx() - 10;
+                // OCR 页单列时用「单位列右缘」与「值列左缘」的中点：表头文字常与右对齐的数值重叠
+                // （图纸里 Parallel 与 15 的 x 几乎一致），按中心线切会把数值判进单位列。
+                : (tightUnitColumn && unit != null
+                        ? (unit.x1() + configs.get(0).x0()) / 2
+                        : configs.get(0).cx() - 10);
         if (unit != null) {
             double hi = Math.max(firstCfgLeft, lo + 1);
             cols.add(new Column("unit", lo, hi));
@@ -325,6 +686,24 @@ public class CatalogParser {
         return groups;
     }
 
+    /**
+     * 版次/草案标注：图纸的表标题常写成 {@code CRM0013-Preliminary}、{@code AXD120-初步}，
+     * 那是「本表为初版」的说明，不是型号的一部分。
+     */
+    private static final Pattern DRAFT_WORD = Pattern.compile(
+            "(?i)(?:^|[-_\\s])(?:preliminary|prelim|draft|tentative|provisional)(?![a-z])"
+                    + "|初步|初版|草案|仅供参考");
+
+    /** 型号名去掉版次词；整串都是版次词时原样返回（不做无根据的猜测）。 */
+    static String cleanModel(String model) {
+        if (model == null || model.isEmpty()) {
+            return "";
+        }
+        String s = DRAFT_WORD.matcher(model).replaceAll(" ").replaceAll("\\s+", " ").strip();
+        s = rstrip(s, "-_/ ");
+        return s.isEmpty() ? model : s;
+    }
+
     /** 型号名：多列型号 → 公共前缀；否则取表头上方最近的型号样式 token。 */
     String namesFromTitle(List<TextLine> lines, int headerIndex, Map<String, List<Integer>> groups) {
         if (!groups.isEmpty()) {
@@ -342,12 +721,12 @@ public class CatalogParser {
                     pref = pref.substring(0, idx);
                 }
             }
-            return pref.isEmpty() ? names.get(0) : pref;
+            return cleanModel(pref.isEmpty() ? names.get(0) : pref);
         }
         for (int i = headerIndex - 1; i >= 0; i--) {
             for (TextRun s : lines.get(i).runs()) {
                 if (LayoutRules.MODEL_PATTERN.matcher(s.token()).matches()) {
-                    return s.token();
+                    return cleanModel(s.token());
                 }
             }
         }
@@ -398,10 +777,14 @@ public class CatalogParser {
     }
 
     Block parseBlock(List<TextLine> lines, int headerIndex, Columns cols) {
+        return parseBlock(lines, headerIndex, cols, LayoutRules.BLOCK_LINE_GAP);
+    }
+
+    Block parseBlock(List<TextLine> lines, int headerIndex, Columns cols, double lineGap) {
         int end = lines.size();
         for (int j = headerIndex + 1; j < lines.size(); j++) {
             if (isFootnoteStart(lines.get(j))
-                    || lines.get(j).oy() - lines.get(j - 1).oy() > LayoutRules.BLOCK_LINE_GAP) {
+                    || lines.get(j).oy() - lines.get(j - 1).oy() > lineGap) {
                 end = j;
                 break;
             }
@@ -412,7 +795,7 @@ public class CatalogParser {
             TextLine ln = lines.get(j);
             Map<String, List<TextRun>> cells = new LinkedHashMap<>();
             for (TextRun r : ln.runs()) {
-                String c = cols.at(r.cx());
+                String c = cols.of(r);
                 if (c == null) {
                     continue;
                 }
@@ -425,15 +808,18 @@ public class CatalogParser {
 
             TableRow row = new TableRow();
             row.oy = ln.oy();
-            row.name = text(rendered, "name");
+            // 参数名里夹带的脚注标记（`@100C[1]`）要剥出来单独存：留在名字里就永远匹配不上
+            // 字段字典。剥完若只剩占位符，说明名字在图上、文字层没取到。
+            String[] nameAndMark = splitNameMarkers(text(rendered, "name"));
+            row.name = nameAndMark[0];
             row.sym = text(rendered, "sym");
-            row.unit = text(rendered, "unit");
+            row.unit = normalizeUnit(normalizeText(text(rendered, "unit")));
             for (Map.Entry<String, CellText> e : rendered.entrySet()) {
                 if (e.getKey().startsWith("v") && !e.getValue().text().isEmpty()) {
                     row.values.put(e.getKey(), e.getValue().text());
                 }
             }
-            StringBuilder foot = new StringBuilder();
+            StringBuilder foot = new StringBuilder(nameAndMark[1]);
             for (CellText c : rendered.values()) {
                 foot.append(c.marks());
             }
@@ -512,7 +898,12 @@ public class CatalogParser {
             double bestDiff = Double.MAX_VALUE;
             for (TableRow n : named) {
                 double diff = Math.abs(n.oy - r.oy);
-                if (diff < bestDiff) {
+                boolean closer = diff < bestDiff - LayoutRules.CONTINUATION_TIE;
+                // 距离打平时归上方：参数名被拆成上下两截、值居中时，两截的距离几乎相等，
+                // 而参数名的第一行才是「这行参数」的锚点
+                boolean tieAbove = diff <= bestDiff + LayoutRules.CONTINUATION_TIE
+                        && target != null && n.oy < target.oy;
+                if (target == null || closer || tieAbove) {
                     bestDiff = diff;
                     target = n;
                 }
@@ -520,6 +911,28 @@ public class CatalogParser {
             if (target == null || bestDiff > LayoutRules.CONTINUATION_ATTACH) {
                 continue;
             }
+
+            // 同一物理行被 OCR 拆成两条基线时（符号的字身矮，常单独成一条），
+            // 缺的那几格应当「补空」，而不是拼成一串字符串。
+            // 不然 `Electrical Time Constant | Te | ms | 0.35` 会变成
+            // 「单位 = ms0.35；Te」，整行数据作废。
+            if (!r.sym.isEmpty()) {
+                // 一行只可能有一个符号：取更长的那个，`1` 这种单字符碎片
+                // （OCR 把 Icn 从中间切开）让给真正的符号
+                if (r.sym.length() > target.sym.length()) {
+                    target.sym = r.sym;
+                }
+                r.sym = "";
+            }
+            if (target.unit.isEmpty() && !r.unit.isEmpty()) {
+                target.unit = r.unit;
+                r.unit = "";
+            }
+            if (target.values.isEmpty() && !r.values.isEmpty()) {
+                target.values.putAll(r.values);
+                r.values.clear();
+            }
+
             String txt = r.sym + r.unit + String.join("", r.orderedValues());
             if (!txt.isEmpty()) {
                 extras.computeIfAbsent(target, k -> new ArrayList<>()).add(new Object[]{r.oy, txt});
@@ -541,13 +954,155 @@ public class CatalogParser {
                 }
             }
             if (parts.size() > 1) {
-                target.unit = "";
+                // base 的构造是「单位 + 值」，多值拼接时单位会混进第一个值里。
+                // 单位列本来就有内容、且值确实以它开头时，剥掉重复的那截、把单位留在单位列；
+                // 否则（单位来自别的行）才退回「整串塞进值」。
+                if (!target.unit.isEmpty() && parts.get(0).startsWith(target.unit)) {
+                    parts.set(0, parts.get(0).substring(target.unit.length()));
+                } else {
+                    target.unit = "";
+                }
                 target.values.clear();
-                target.values.put("v0", String.join("；", parts));
+                target.values.put("v0", String.join("；", parts).strip());
                 target.merged = true;
             }
         }
         return keep;
+    }
+
+    /**
+     * 参数名单元格纵向合并时，名字占两行、数值居中停在两行之间，
+     * OCR 给出的就是「名字 / 值 / 名字」三行 —— 下半截会变成一条参数名叫
+     * {@code @100C} 的怪行。这里把下半截接回上一行名字后面。
+     *
+     * <p>三重保险，只在三条同时成立时才合并：①该行只有名字，符号/单位/值全空
+     * （独立参数行不可能三者全空，分节行已被 {@link #markSections} 标成 section 而排除）；
+     * ②名字以 {@code (}、{@code @}、{@code [}、数字或小写字母开头（分节名不会）；
+     * ③与相邻有值行的距离不超过 1.6 倍行距（就是紧挨着，不是下一段）。
+     */
+    List<TableRow> mergeWrappedNames(List<TableRow> rows) {
+        double pitch = medianPitch(rows);
+        List<TableRow> out = new ArrayList<>();
+        for (int i = 0; i < rows.size(); i++) {
+            TableRow r = rows.get(i);
+            if (isWrappedName(r)) {
+                TableRow above = i > 0 ? rows.get(i - 1) : null;
+                TableRow below = i + 1 < rows.size() ? rows.get(i + 1) : null;
+                TableRow host = null;
+                if (above != null && hasContent(above) && adjacent(r, above, pitch)) {
+                    host = above;
+                } else if (below != null && hasContent(below) && adjacent(r, below, pitch)) {
+                    host = below;
+                }
+                if (host != null) {
+                    host.name = host.oy < r.oy ? joinName(host.name, r.name) : joinName(r.name, host.name);
+                    continue;
+                }
+            }
+            out.add(r);
+        }
+        return out;
+    }
+
+    /** 名字续行拼接：两侧都缺分隔时补一个空格（{@code …(NC} + {@code @100C} → {@code …(NC @100C}）。 */
+    private static String joinName(String first, String second) {
+        if (first.isEmpty()) {
+            return second;
+        }
+        if (second.isEmpty()) {
+            return first;
+        }
+        char left = first.charAt(first.length() - 1);
+        char right = second.charAt(0);
+        boolean tight = Character.isWhitespace(left) || Character.isWhitespace(right)
+                || left == '(' || left == '（' || left == '/'
+                || right == ')' || right == '）' || right == ',' || right == '，' || right == '/';
+        return tight ? first + second : first + " " + second;
+    }
+
+    /** 只有名字、其余三列全空的行（分节行不算：它已经被 {@link #markSections} 标过）。 */
+    private static boolean isWrappedName(TableRow r) {
+        return TableRow.KIND_ROW.equals(r.kind)
+                && r.name != null && !r.name.isEmpty()
+                && r.sym.isEmpty() && r.unit.isEmpty() && r.values.isEmpty()
+                && LayoutRules.WRAPPED_NAME_START.matcher(r.name).matches();
+    }
+
+    private static boolean hasContent(TableRow r) {
+        return TableRow.KIND_ROW.equals(r.kind) && !r.values.isEmpty();
+    }
+
+    private static boolean adjacent(TableRow a, TableRow b, double pitch) {
+        return Math.abs(a.oy - b.oy) <= pitch * 1.6;
+    }
+
+    /** 本块行距的中位数：用它判断「紧挨着」比写死 pt 更抗版式差异（图纸 21pt、样册 15pt）。 */
+    private static double medianPitch(List<TableRow> rows) {
+        List<Double> gaps = new ArrayList<>();
+        for (int i = 1; i < rows.size(); i++) {
+            double gap = rows.get(i).oy - rows.get(i - 1).oy;
+            if (gap > 0.5) {
+                gaps.add(gap);
+            }
+        }
+        if (gaps.isEmpty()) {
+            return LayoutRules.BLOCK_LINE_GAP;
+        }
+        gaps.sort(Double::compare);
+        return gaps.get(gaps.size() / 2);
+    }
+
+    /**
+     * OCR 会把同一行的「参数名」和「数值」还原到两条基线上（字形高度不同，检测框被切开），
+     * 于是出现「有名无值」+「无名有值」两行。这里按纵向就近把它们拼回一行。
+     *
+     * <p>只在无名行（{@link #NAMELESS}，即原格只剩脚注标记）存在时触发——文字层正常的表格
+     * 不会走到这条路径。拼不上的无名行若只有横线类字符，整行没有信息，直接丢弃。
+     */
+    List<TableRow> reuniteBrokenRows(List<TableRow> rows) {
+        List<TableRow> out = new ArrayList<>();
+        for (TableRow r : rows) {
+            if (!NAMELESS.equals(r.name)) {
+                out.add(r);
+                continue;
+            }
+            TableRow host = null;
+            double best = Double.MAX_VALUE;
+            for (TableRow a : rows) {
+                if (a == r || a.name.isEmpty() || NAMELESS.equals(a.name) || !a.values.isEmpty()) {
+                    continue;                          // 只往「有参数名、值还空着」的行上拼
+                }
+                double diff = Math.abs(a.oy - r.oy);
+                if (diff < best) {
+                    best = diff;
+                    host = a;
+                }
+            }
+            String only = String.join("", r.orderedValues()).strip();
+            if (host != null && best <= LayoutRules.CONTINUATION_ATTACH && !isBlankValue(only)) {
+                host.values.putAll(r.values);
+                host.footnote = (host.footnote + r.footnote).strip();
+                continue;
+            }
+            if (isBlankValue(only)) {
+                continue;                              // 「—」这种占位值，丢了不影响
+            }
+            out.add(r);
+        }
+        return out;
+    }
+
+    /** 值是否形同虚设：空，或整串只有横线/斜线类字符。 */
+    private static boolean isBlankValue(String value) {
+        if (value == null || value.isBlank()) {
+            return true;
+        }
+        for (int i = 0; i < value.length(); i++) {
+            if ("-－—–_─一/".indexOf(value.charAt(i)) < 0) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /** 分节行：表头左侧的分节名 + 表内浅蓝底色块覆盖的行。 */
@@ -578,7 +1133,8 @@ public class CatalogParser {
                 }
             }
             boolean nameOnly = r.sym.isEmpty() && r.unit.isEmpty() && r.values.isEmpty();
-            if (inBand && nameOnly) {
+            // 底色块不是必需品：位图 OCR 出来的表没有矢量色块，只能靠分节标题的命名形态判断
+            if ((inBand && nameOnly) || (nameOnly && LayoutRules.isSectionName(r.name))) {
                 r.kind = TableRow.KIND_SECTION;
                 r.section = r.name;
             } else {
@@ -603,7 +1159,7 @@ public class CatalogParser {
         for (TableRow r : rows) {
             if (r.isSection()) {
                 current = r.name == null ? "" : r.name.strip();
-                keep = LayoutRules.KEEP_SECTIONS.contains(current);
+                keep = LayoutRules.isKeptSection(current);
                 if (keep) {
                     out.add(r);
                 }

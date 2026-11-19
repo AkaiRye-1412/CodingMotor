@@ -58,4 +58,8 @@ packaging/windows/
   反射依赖、`jdk.localedata`/`jdk.charsets` 中文、`jdk.crypto.ec`、`jdk.zipfs`）。
 - WebView2 loader 用 .NET Framework 4.8（Win10/11 自带，不打包 runtime），仅增 ~1MB
   （loader exe 30KB + 3 个 DLL ~0.9MB）。
-- OCR（样册识别 I1–I13）尚未纳入：纳入后需追加 Tess4J 原生库与 `tessdata`（150–180MB）。
+- 样册识别含 OCR（PP-OCRv6 small + ONNX Runtime，全离线），体积代价两处：
+  模型 30MB（`resources/ocr/`，无法再压）；`onnxruntime` jar 89MB（解开 290MB）。
+  后者由 `jar_slim.py` 在打包时裁剪：只留 `win-x64/*.dll`，剔掉 linux/osx 全部原生库
+  与所有 `.pdb`/`.dSYM` 调试符号（仅 `onnxruntime.pdb` 就占压缩后 58MB）。
+  fat jar 181.8MB → 97.5MB，省 84.3MB。原 `target/` jar 不动，其他平台仍可构建。

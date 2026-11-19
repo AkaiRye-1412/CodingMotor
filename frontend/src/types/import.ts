@@ -22,6 +22,10 @@ export interface ImportStats {
   dataRows: number
   footnoteCount: number
   skippedPages: number[]
+  /** 未识别页中「参数表本身是位图」的页（图片铺满页面 + 出现规格类标题）。 */
+  imageTablePages: number[]
+  /** 通过 OCR 才解析出参数表的页（数据来自图像识别，需重点核对）。 */
+  ocrPages: number[]
   excelName: string
   message: string
 }

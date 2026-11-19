@@ -15,6 +15,8 @@ import java.util.List;
  * @param dataRows       Excel 长表数据行数
  * @param footnoteCount  脚注条数
  * @param skippedPages   未识别出参数表的页
+ * @param imageTablePages 未识别页中「参数表本身是位图」的页（图片铺满页面 + 有规格标题）
+ * @param ocrPages       通过 OCR 才解析出参数表的页（数据来自图像识别，需重点核对）
  * @param excelName      建议下载文件名
  * @param message        人类可读结论（空结果时给出原因与建议）
  */
@@ -29,6 +31,8 @@ public record ImportStats(
         int dataRows,
         int footnoteCount,
         List<Integer> skippedPages,
+        List<Integer> imageTablePages,
+        List<Integer> ocrPages,
         String excelName,
         String message) {
 }
