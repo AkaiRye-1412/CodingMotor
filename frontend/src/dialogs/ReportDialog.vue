@@ -117,7 +117,7 @@ async function handleExport(): Promise<void> {
       :closable="false"
       show-icon
       :title="`将导出当前页签下全部 ${currentPlans.length} 条方案`"
-      description="无法计算的方案仍会进入目录与正文，并标注原因。"
+      description="每个方案按「理论计算结果 · 工况输入 · 运动曲线 · 选入电机数据」成页，只包含选入的电机（不含推荐清单）；无法计算的方案仍会列出并标注原因。"
     />
 
     <template #footer>

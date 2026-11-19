@@ -93,8 +93,29 @@ class ReportApiTest {
         String text = extractText(pdf);
         assertThat(text).contains("电机选型报告");
         assertThat(text).contains("测试项目");
-        assertThat(text).contains("推荐清单");
+        assertThat(text).contains("理论计算结果");
+        assertThat(text).contains("工况输入");
         assertThat(text).contains("运动曲线");
+        assertThat(text).contains("选入电机");
+        assertThat(text).contains("电机实际应用值");
+    }
+
+    /** 第 69 轮：报告只导出选入电机，不再全量导出推荐清单。 */
+    @Test
+    void reportContainsSelectedMotorOnly() throws Exception {
+        Long selected = seedLinear("REPORT-L1");
+        seedLinear("REPORT-L2");
+
+        MvcResult result = mockMvc.perform(post("/api/reports/pdf")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(reportRequest(validPlan(selected)))))
+                .andExpect(status().isOk())
+                .andReturn();
+
+        String text = extractText(result.getResponse().getContentAsByteArray());
+        assertThat(text).contains("REPORT-L1");
+        assertThat(text).doesNotContain("REPORT-L2");
+        assertThat(text).doesNotContain("推荐清单");
     }
 
     @Test

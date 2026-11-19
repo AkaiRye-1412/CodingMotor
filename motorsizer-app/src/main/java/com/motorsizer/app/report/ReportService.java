@@ -9,9 +9,7 @@ import com.motorsizer.app.dto.CalculationResponse;
 import com.motorsizer.app.dto.ReportRequest;
 import com.motorsizer.app.service.CalculationService;
 import com.motorsizer.app.service.MotorService;
-import com.motorsizer.domain.catalog.MotorType;
 import com.motorsizer.domain.model.AxisKind;
-import com.motorsizer.domain.model.MotionMode;
 import com.motorsizer.domain.units.ValueFormatter;
 import org.springframework.stereotype.Service;
 import org.thymeleaf.context.Context;
@@ -19,7 +17,6 @@ import org.thymeleaf.spring6.SpringTemplateEngine;
 
 import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
@@ -27,6 +24,7 @@ import java.util.Set;
  * S4 报告服务：逐方案复用 S3 计算 → 组装 Thymeleaf 视图 → HTML 转 PDF。
  *
  * <p>报告与屏幕同源：不重新实现任何计算，曲线按同一份 sampling 数据在服务端重绘。
+ * 内容口径与界面一致（第 69 轮）：只导出「选入电机」，不再列出全部推荐电机。
  */
 @Service
 public class ReportService {
@@ -85,10 +83,10 @@ public class ReportService {
                 errors.add(new FieldError("settings.mode", "运动模式只能为 pointToPoint / custom"));
             }
             if (request.settings().smooth() == null) {
-                errors.add(new FieldError("settings.smooth", "S 曲线设置不能为空"));
+                errors.add(new FieldError("settings", "S 曲线设置不能为空"));
             }
             if (request.settings().margin() == null) {
-                errors.add(new FieldError("settings.margin", "安全余量设置不能为空"));
+                errors.add(new FieldError("settings", "安全余量设置不能为空"));
             }
         }
 
@@ -134,7 +132,7 @@ public class ReportService {
             int planNo = item.planNo() == null ? index + 1 : item.planNo();
 
             if (item.plan() == null) {
-                plans.add(errorPlan(planNo, "方案输入为空"));
+                plans.add(errorPlan(planNo, "方案输入为空", null, false, null));
                 continue;
             }
 
@@ -152,13 +150,16 @@ public class ReportService {
                 CalculationResponse response = calculationService.calculate(calculationRequest);
                 if (response.stage() == null || !response.stage().ok()) {
                     plans.add(errorPlan(planNo,
-                            response.stage() == null ? "无法计算" : response.stage().message()));
+                            response.stage() == null ? "无法计算" : response.stage().message(),
+                            axis, "pointToPoint".equals(settings.mode()), item.plan()));
                     continue;
                 }
-                plans.add(successPlan(planNo, axis, item.plan(), response));
+                plans.add(successPlan(planNo, axis, "pointToPoint".equals(settings.mode()),
+                        item.plan(), response));
                 anyComputable = true;
             } catch (BusinessException ex) {
-                plans.add(errorPlan(planNo, businessMessage(ex)));
+                plans.add(errorPlan(planNo, businessMessage(ex),
+                        axis, "pointToPoint".equals(settings.mode()), item.plan()));
             }
         }
 
@@ -171,10 +172,12 @@ public class ReportService {
                 request.projectName().trim(),
                 request.axisName().trim(),
                 request.reportDate().toString(),
+                axis == AxisKind.LINEAR ? "直线电机" : "旋转电机",
                 trimToNull(request.customerName()),
                 trimToNull(request.workingConditionNote()),
                 plans.size(),
                 modeLabel(settings.mode()),
+                shapeLabel(firstShape(request.plans())),
                 smoothLabel(settings.smooth()),
                 marginLabel(settings.margin()),
                 plans);
@@ -183,6 +186,7 @@ public class ReportService {
     private ReportModel.ReportPlanModel successPlan(
             int planNo,
             AxisKind axis,
+            boolean pointToPoint,
             CalculationRequest.Plan plan,
             CalculationResponse response) {
 
@@ -192,9 +196,8 @@ public class ReportService {
                 ? null
                 : response.selectedMotor().applied();
 
-        List<ReportModel.ReportRow> inputs = inputRows(axis, plan, curve);
-        List<ReportModel.ReportRow> theoretical = theoreticalRows(response, applied);
-        List<ReportModel.ReportCandidateRow> candidates = candidateRows(response.candidates());
+        List<List<ReportModel.ReportMetric>> metrics = metricRows(response, applied);
+        List<ReportModel.ReportPairRow> inputs = inputRows(axis, pointToPoint, plan, curve, true);
 
         ReportModel.SelectedView selectedView = null;
         if (response.selectedMotor() != null) {
@@ -202,14 +205,16 @@ public class ReportService {
         }
 
         List<ReportModel.ReportRow> appliedRows = appliedRows(axis, applied);
-        String thermalVerdict = applied == null ? "—" : thermalVerdict(applied.thermalVerdict(),
-                applied.thermalMissing());
+        String verdictText = applied == null ? "" : thermalVerdict(applied);
+        String verdictTone = applied == null ? "unknown" : verdictTone(applied);
         String supplyText = applied == null || applied.supply() == null
                 ? "未填写供电母线，未做供电判定"
                 : applied.supply().text();
         String overVoltage = applied != null && Boolean.TRUE.equals(applied.overBusVoltage())
                 ? "需求电压 > 电机 Ubus 耐压"
                 : "";
+        boolean supplyOk = applied != null && applied.supply() != null
+                && Boolean.TRUE.equals(applied.supply().pass());
 
         String speedChart = null;
         String forceChart = null;
@@ -222,43 +227,54 @@ public class ReportService {
                     response.sampling().force(), accelerationEnd, cruiseEnd, units.force());
         }
 
-        String summary = selectedView == null
-                ? "未选取电机"
-                : selectedView.modelLabel();
+        String modelLabel = selectedView == null ? "未选取电机" : selectedView.modelLabel();
 
         return new ReportModel.ReportPlanModel(
                 planNo,
-                summary,
+                modelLabel,
                 true,
                 null,
+                metrics,
                 inputs,
-                theoretical,
-                candidates,
                 selectedView,
                 appliedRows,
-                thermalVerdict,
-                supplyText,
+                verdictText,
+                verdictTone,
                 overVoltage,
+                supplyText,
+                supplyOk,
                 speedChart,
                 forceChart,
                 units == null ? "" : units.velocity(),
                 units == null ? "" : units.force());
     }
 
-    private static ReportModel.ReportPlanModel errorPlan(int planNo, String message) {
+    /**
+     * 无法计算的方案：仍保留「工况输入」表（右列全部为「—」），让读者看得到提交了什么，
+     * 也避免该页除一个红框外整页空白。
+     */
+    private static ReportModel.ReportPlanModel errorPlan(
+            int planNo,
+            String message,
+            AxisKind axis,
+            boolean pointToPoint,
+            CalculationRequest.Plan plan) {
         return new ReportModel.ReportPlanModel(
                 planNo,
                 "无法计算",
                 false,
                 message == null ? "无法计算" : message,
                 List.of(),
-                List.of(),
-                List.of(),
+                plan == null || axis == null
+                        ? List.of()
+                        : inputRows(axis, pointToPoint, plan, null, false),
                 null,
                 List.of(),
-                "—",
+                "",
+                "unknown",
                 "",
                 "",
+                false,
                 null,
                 null,
                 "",
@@ -287,29 +303,8 @@ public class ReportService {
 
     // ---------------------------------------------------------------- 行组装
 
-    private List<ReportModel.ReportRow> inputRows(
-            AxisKind axis, CalculationRequest.Plan plan, CalculationResponse.Curve curve) {
-        boolean linear = axis == AxisKind.LINEAR;
-        List<ReportModel.ReportRow> rows = new ArrayList<>();
-        rows.add(row(linear ? "总移动质量" : "负载惯量", fmt(plan == null ? null : plan.load(), 4),
-                linear ? "kg" : "kg·m²"));
-        rows.add(row(linear ? "运动距离" : "旋转角度", fmt(plan == null ? null : plan.distance(), 4),
-                linear ? "m" : "°"));
-        rows.add(row("运动时间", fmt(curve == null ? null : curve.time(), 4), "s"));
-        rows.add(row("最大加速度", fmt(curve == null ? null : curve.peakAcceleration(), 4),
-                linear ? "m/s²" : "rpm/s"));
-        rows.add(row("停顿时间", fmt(plan == null ? null : plan.dwell(), 4), "s"));
-        rows.add(row("最大速度", fmt(curve == null ? null : curve.peakVelocity(), 4),
-                linear ? "m/s" : "rpm"));
-        rows.add(row(linear ? "阻力" : "摩擦力矩", fmt(plan == null ? null : plan.resistance(), 4),
-                linear ? "N" : "N·m"));
-        rows.add(row("倾斜角度", fmt(plan == null ? null : plan.tiltDeg(), 4), "°"));
-        rows.add(row("环境温度", fmt(plan == null ? null : plan.ambientTemp(), 4), "°C"));
-        rows.add(row("供电母线", fmt(plan == null ? null : plan.supplyVoltage(), 4), "Vdc"));
-        return rows;
-    }
-
-    private List<ReportModel.ReportRow> theoreticalRows(
+    /** 理论计算结果 6 张指标卡（顺序与 M6 一致），按 3 列一行分组供模板直接渲染。 */
+    private List<List<ReportModel.ReportMetric>> metricRows(
             CalculationResponse response, CalculationResponse.Applied applied) {
 
         CalculationResponse.Theoretical theoretical = response.theoretical();
@@ -318,32 +313,76 @@ public class ReportService {
         if (theoretical == null || curve == null || units == null) {
             return List.of();
         }
-        List<ReportModel.ReportRow> rows = new ArrayList<>();
-        rows.add(row("持续力 / 力矩", fmt(theoretical.contForce(), 1), units.force()));
-        rows.add(row("峰值力 / 力矩", fmt(theoretical.peakForce(), 1), units.force()));
-        rows.add(row("最大加速度", fmt(curve.peakAcceleration(), 1), units.acceleration()));
-        rows.add(row("最大速度", fmt(curve.peakVelocity(), 1), units.velocity()));
-        rows.add(row("安全余量",
-                applied == null ? "—" : fmt(applied.safetyPercent(), 1), "%"));
-        rows.add(row("总循环周期", fmt(theoretical.cycleTime(), 1), "s"));
+        List<ReportModel.ReportMetric> metrics = new ArrayList<>();
+        metrics.add(metric("持续力 / 力矩", fmt(theoretical.contForce(), 1), units.force(), false));
+        metrics.add(metric("峰值力 / 力矩", fmt(theoretical.peakForce(), 1), units.force(), false));
+        metrics.add(metric("最大加速度", fmt(curve.peakAcceleration(), 1), units.acceleration(), false));
+        metrics.add(metric("最大速度", fmt(curve.peakVelocity(), 1), units.velocity(), false));
+        metrics.add(metric("安全余量",
+                applied == null || applied.safetyPercent() == null
+                        ? "—"
+                        : fmt(applied.safetyPercent(), 1),
+                "%", true));
+        metrics.add(metric("总循环周期", fmt(theoretical.cycleTime(), 1), "s", false));
+        List<List<ReportModel.ReportMetric>> rows = new ArrayList<>();
+        for (int index = 0; index < metrics.size(); index += 3) {
+            rows.add(metrics.subList(index, Math.min(index + 3, metrics.size())));
+        }
         return rows;
     }
 
-    private List<ReportModel.ReportCandidateRow> candidateRows(
-            List<CalculationResponse.Candidate> candidates) {
-        if (candidates == null) {
-            return List.of();
-        }
-        List<ReportModel.ReportCandidateRow> rows = new ArrayList<>();
-        for (CalculationResponse.Candidate candidate : candidates) {
-            MotorType type = MotorType.fromCode(candidate.motorType());
-            rows.add(new ReportModel.ReportCandidateRow(
-                    motorLabel(candidate.modelName(), candidate.configName()),
-                    type == null ? candidate.motorType() : type.label(),
-                    fmtPercent(candidate.headroomRatio() * 100),
-                    String.join("；", candidate.reasons()),
-                    candidate.overSized() ? "余量过大" : ""));
-        }
+    /**
+     * 工况输入：左列用户输入、右列实际参与计算的值（与 M4 双列表一一对应）。
+     * 点到点模式下最大速度 / 最大加速度由系统反解，用户输入列显示「—」。
+     */
+    private static List<ReportModel.ReportPairRow> inputRows(
+            AxisKind axis,
+            boolean pointToPoint,
+            CalculationRequest.Plan plan,
+            CalculationResponse.Curve curve,
+            boolean computed) {
+        boolean linear = axis == AxisKind.LINEAR;
+        List<ReportModel.ReportPairRow> rows = new ArrayList<>();
+        rows.add(pair(linear ? "总移动质量" : "负载惯量",
+                fmt(plan == null ? null : plan.load(), 4),
+                computed ? fmt(plan == null ? null : plan.load(), 4) : "—",
+                linear ? "kg" : "kg·m²"));
+        rows.add(pair(linear ? "运动距离" : "旋转角度",
+                fmt(plan == null ? null : plan.distance(), 4),
+                computed ? fmt(plan == null ? null : plan.distance(), 4) : "—",
+                linear ? "m" : "°"));
+        rows.add(pair("运动时间",
+                plan == null ? null : plan.time() == null ? "自动" : fmt(plan.time(), 4),
+                computed ? fmt(curve == null ? null : curve.time(), 3) : "—",
+                "s"));
+        rows.add(pair("最大加速度",
+                inputOrAuto(plan == null ? null : plan.maxAcceleration(), pointToPoint),
+                computed ? fmt(curve == null ? null : curve.peakAcceleration(), 3) : "—",
+                linear ? "m/s²" : "rpm/s"));
+        rows.add(pair("停顿时间",
+                fmt(plan == null ? null : plan.dwell(), 4),
+                computed ? fmt(plan == null ? null : plan.dwell(), 4) : "—",
+                "s"));
+        rows.add(pair("最大速度",
+                inputOrAuto(plan == null ? null : plan.maxVelocity(), pointToPoint),
+                computed ? fmt(curve == null ? null : curve.peakVelocity(), 3) : "—",
+                linear ? "m/s" : "rpm"));
+        rows.add(pair(linear ? "阻力" : "摩擦力矩",
+                fmt(plan == null ? null : plan.resistance(), 4),
+                computed ? fmt(plan == null ? null : plan.resistance(), 4) : "—",
+                linear ? "N" : "N·m"));
+        rows.add(pair("倾斜角度",
+                fmt(plan == null ? null : plan.tiltDeg(), 2),
+                computed ? fmt(plan == null ? null : plan.tiltDeg(), 2) : "—",
+                "°"));
+        rows.add(pair("环境温度",
+                fmt(plan == null ? null : plan.ambientTemp(), 2),
+                computed ? fmt(plan == null ? null : plan.ambientTemp(), 2) : "—",
+                "°C"));
+        rows.add(pair("供电母线",
+                fmt(plan == null ? null : plan.supplyVoltage(), 2),
+                computed ? fmt(plan == null ? null : plan.supplyVoltage(), 2) : "—",
+                "VDC"));
         return rows;
     }
 
@@ -360,9 +399,11 @@ public class ReportService {
             int digits = ("prated".equals(parameter.key()) || "pmax".equals(parameter.key())) ? 1 : 4;
             parameters.add(row(parameter.label(), fmt(parameter.value(), digits), parameter.unit()));
         }
+        boolean recommended = selected.inRecommendation();
         return new ReportModel.SelectedView(
                 label,
-                selected.inRecommendation() ? "在推荐范围内" : "不在推荐范围",
+                recommended ? "在推荐范围内" : "不在推荐范围",
+                recommended,
                 trimToNull(selected.outOfRangeReason()),
                 parameters);
     }
@@ -393,8 +434,26 @@ public class ReportService {
 
     // ---------------------------------------------------------------- 工具
 
+    private static ReportModel.ReportMetric metric(
+            String label, String value, String unit, boolean emphasis) {
+        return new ReportModel.ReportMetric(label, value, unit, emphasis);
+    }
+
+    private static ReportModel.ReportPairRow pair(
+            String label, String input, String computed, String unit) {
+        return new ReportModel.ReportPairRow(label, input, computed, unit);
+    }
+
     private static ReportModel.ReportRow row(String label, String value, String unit) {
         return new ReportModel.ReportRow(label, value == null || "—".equals(value) ? "—" : value, unit);
+    }
+
+    /** 输入列：点到点模式下该列不可填（系统反解），显示「—」；自定义模式留空显示「自动」。 */
+    private static String inputOrAuto(Double value, boolean pointToPoint) {
+        if (pointToPoint) {
+            return "—";
+        }
+        return value == null ? "自动" : fmt(value, 4);
     }
 
     private static String appliedValue(Double value, String missing) {
@@ -408,10 +467,6 @@ public class ReportService {
         return ValueFormatter.format(value, digits);
     }
 
-    private static String fmtPercent(double value) {
-        return String.format(java.util.Locale.ROOT, "%.0f%%", value);
-    }
-
     private static String motorLabel(String modelName, String configName) {
         return configName == null || "默认".equals(configName)
                 ? modelName
@@ -420,6 +475,23 @@ public class ReportService {
 
     private static String modeLabel(String mode) {
         return "pointToPoint".equals(mode) ? "点到点" : "自定义";
+    }
+
+    private static String shapeLabel(String shape) {
+        if (shape == null) {
+            return "—";
+        }
+        return "triangle".equals(shape) ? "三角形" : "梯形";
+    }
+
+    /** 形状是方案级字段，抬头只展示首条方案的值（前端一次导出内保持一致）。 */
+    private static String firstShape(List<ReportRequest.PlanItem> plans) {
+        for (ReportRequest.PlanItem item : plans) {
+            if (item != null && item.shape() != null) {
+                return item.shape();
+            }
+        }
+        return null;
     }
 
     private static String smoothLabel(CalculationRequest.Smooth smooth) {
@@ -436,14 +508,14 @@ public class ReportService {
         }
         double lower = margin.lowerPercent() == null ? 30 : margin.lowerPercent();
         double upper = margin.upperPercent() == null ? 300 : margin.upperPercent();
-        String text = "下限 " + ValueFormatter.format(lower, 0) + "%";
         if (Boolean.TRUE.equals(margin.upperEnabled())) {
-            text += " / 上限 " + ValueFormatter.format(upper, 0) + "%";
+            return ValueFormatter.format(lower, 0) + "% – " + ValueFormatter.format(upper, 0) + "%";
         }
-        return text;
+        return "≥ " + ValueFormatter.format(lower, 0) + "%";
     }
 
-    private static String thermalVerdict(String verdict, List<String> thermalMissing) {
+    private static String thermalVerdict(CalculationResponse.Applied applied) {
+        String verdict = applied.thermalVerdict();
         if ("pass".equals(verdict)) {
             return "电机选型合适";
         }
@@ -451,9 +523,18 @@ public class ReportService {
             return "线圈温度超限";
         }
         // 说清到底缺什么：样册入库的电机通常缺「最高线圈温度 Tmax」（采集口径里不含这一行）
+        List<String> thermalMissing = applied.thermalMissing();
         return thermalMissing == null || thermalMissing.isEmpty()
                 ? "热校核数据不足"
                 : "热校核数据不足（缺 " + String.join(" / ", thermalMissing) + "）";
+    }
+
+    private static String verdictTone(CalculationResponse.Applied applied) {
+        String verdict = applied.thermalVerdict();
+        if ("pass".equals(verdict)) {
+            return "pass";
+        }
+        return "fail".equals(verdict) ? "fail" : "unknown";
     }
 
     private static String filename(String projectName, String axisName) {

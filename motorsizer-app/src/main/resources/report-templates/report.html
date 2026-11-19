@@ -4,324 +4,783 @@
     <meta charset="UTF-8"/>
     <title th:text="|电机选型报告 - ${report.projectName}|">电机选型报告</title>
     <style>
+        /* ---------------------------------------------------------------- 页面 */
         @page {
             size: A4;
-            margin: 16mm 14mm;
-            @bottom-center {
+            margin: 17mm 15mm 15mm 15mm;
+            @bottom-left {
+                content: "MotorSizer · 电机选型报告";
+                font-family: "Noto Sans SC", sans-serif;
+                font-size: 7.5pt;
+                color: #9aa5b4;
+            }
+            @bottom-right {
                 content: counter(page) " / " counter(pages);
                 font-family: "Noto Sans SC", sans-serif;
-                font-size: 9pt;
-                color: #6b7683;
+                font-size: 7.5pt;
+                color: #9aa5b4;
             }
         }
 
         body {
             font-family: "Noto Sans SC", "Microsoft YaHei", sans-serif;
-            font-size: 10pt;
-            color: #20262e;
-            line-height: 1.55;
+            font-size: 9pt;
+            color: #33415c;
+            line-height: 1.5;
+            margin: 0;
         }
 
-        .cover {
-            page-break-after: always;
-            text-align: center;
-            padding-top: 65mm;
-        }
-
-        .cover h1 {
-            font-size: 24pt;
-            margin-bottom: 4mm;
-        }
-
-        .cover .subtitle {
-            font-size: 12pt;
-            color: #606266;
-            margin-bottom: 12mm;
-        }
-
-        .cover .meta {
-            font-size: 11pt;
-            color: #303133;
-            line-height: 2.0;
-        }
-
-        .toc {
-            page-break-after: always;
-        }
-
-        .toc h2 {
-            font-size: 16pt;
-            margin-bottom: 6mm;
-        }
-
-        .toc li {
-            margin: 2mm 0;
-            font-size: 10.5pt;
-        }
-
-        .plan-section {
-            break-before: page;
-        }
-
-        .plan-section h2 {
-            font-size: 15pt;
-            border-bottom: 0.5mm solid #c6ced6;
-            padding-bottom: 2mm;
-            margin-bottom: 4mm;
-        }
-
-        .plan-summary {
-            color: #606266;
-            font-size: 9.5pt;
-            margin-bottom: 3mm;
-        }
-
-        .section-title {
-            font-size: 11.5pt;
-            font-weight: 700;
-            margin: 4mm 0 2mm;
-        }
-
-        table {
+        /* ---------------------------------------------------------------- 封面 */
+        .brand-bar {
             width: 100%;
             border-collapse: collapse;
-            margin-bottom: 3mm;
+            background-color: #202b45;
         }
 
-        th, td {
-            border: 0.35mm solid #c6ced6;
-            padding: 1.3mm 2mm;
-            text-align: left;
+        .brand-bar td {
+            padding: 4mm 5mm;
+            color: #ffffff;
             vertical-align: middle;
         }
 
-        th {
-            background: #e4e9ef;
+        .brand-name {
+            font-size: 12pt;
             font-weight: 700;
+            letter-spacing: 1.6pt;
         }
 
-        td.value {
+        .brand-tag {
             text-align: right;
+            font-size: 7.5pt;
+            letter-spacing: 0.8pt;
+            color: #a9b6cf;
+        }
+
+        .cover-kicker {
+            margin-top: 20mm;
+            font-size: 8pt;
+            letter-spacing: 2.4pt;
+            color: #8b97ab;
+        }
+
+        .cover-title {
+            font-size: 30pt;
             font-weight: 700;
-            font-variant-numeric: tabular-nums;
+            color: #1b2436;
+            letter-spacing: 1pt;
+            margin: 3mm 0 0 0;
         }
 
-        td.unit {
-            width: 20mm;
-            color: #606266;
+        .cover-project {
+            margin-top: 6mm;
+            font-size: 15pt;
+            font-weight: 700;
+            color: #1d4ed8;
         }
 
-        .candidate-table td {
-            font-size: 9pt;
+        .cover-rule {
+            margin: 5mm 0 6mm 0;
+            height: 0.6mm;
+            background-color: #1d4ed8;
+            width: 28mm;
         }
 
-        .muted {
-            color: #909399;
+        table.meta {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 6mm;
         }
 
-        .warn {
-            color: #8a6100;
-            background: #fdf4dc;
-            border: 0.3mm solid #d9b96a;
-            padding: 1.5mm 2mm;
-            font-size: 9pt;
+        table.meta th {
+            width: 22mm;
+            text-align: left;
+            font-weight: 400;
+            font-size: 8.5pt;
+            color: #7c8899;
+            background-color: #f6f8fc;
+            border: 0.3mm solid #e3e9f2;
+            padding: 2.2mm 3mm;
         }
 
-        .error-box {
-            color: #b02a1e;
-            background: #fdeae8;
-            border: 0.4mm solid #d98a82;
-            padding: 3mm;
+        table.meta td {
+            width: 45mm;
+            border: 0.3mm solid #e3e9f2;
+            padding: 2.2mm 3mm;
+            font-size: 9.5pt;
+            color: #22304a;
+        }
+
+        table.chips {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 2.5mm 0;
+            margin-bottom: 7mm;
+        }
+
+        table.chips td.chip {
+            width: 25%;
+            border: 0.3mm solid #e3e9f2;
+            border-top: 0.9mm solid #1d4ed8;
+            background-color: #f8fafd;
+            padding: 2.5mm 3mm;
+            vertical-align: top;
+        }
+
+        .chip-label {
+            font-size: 7.5pt;
+            color: #7c8899;
+            letter-spacing: 0.3pt;
+        }
+
+        .chip-value {
+            margin-top: 1mm;
             font-size: 10pt;
+            font-weight: 700;
+            color: #1b2436;
         }
 
-        .verdict {
-            font-weight: 700;
-            color: #1f7a3d;
+        .index-title {
+            font-size: 8pt;
+            color: #7c8899;
             margin-bottom: 2mm;
         }
 
-        .verdict-bad {
-            color: #b02a1e;
+        table.index {
+            width: 100%;
+            border-collapse: collapse;
         }
 
-        .chart {
-            margin: 3mm 0 1mm;
+        table.index td {
+            padding: 1.8mm 3mm;
+            border-bottom: 0.3mm solid #eef1f6;
+            font-size: 9pt;
+        }
+
+        table.index td.no {
+            width: 20mm;
+            color: #7c8899;
+        }
+
+        .cover-note {
+            margin-top: 12mm;
+            font-size: 7.5pt;
+            color: #9aa5b4;
+            line-height: 1.7;
+        }
+
+        /* ---------------------------------------------------------------- 方案 */
+        .plan {
+            page-break-before: always;
+        }
+
+        table.plan-head {
+            width: 100%;
+            border-collapse: collapse;
+            border-bottom: 0.5mm solid #1d4ed8;
+            margin-bottom: 2mm;
+        }
+
+        table.plan-head td {
+            padding: 0 0 2.5mm 0;
+            vertical-align: bottom;
+        }
+
+        .plan-no {
+            font-size: 17pt;
+            font-weight: 700;
+            color: #1b2436;
+            letter-spacing: 0.4pt;
+        }
+
+        .plan-model {
+            text-align: right;
+        }
+
+        .plan-model-label {
+            font-size: 8pt;
+            color: #8b97ab;
+            margin-right: 2mm;
+        }
+
+        .plan-model-value {
+            font-size: 11pt;
+            font-weight: 700;
+            color: #1d4ed8;
+        }
+
+        .section {
+            margin: 3.6mm 0 2mm 0;
+            font-size: 11pt;
+            font-weight: 700;
+            color: #1b2436;
+            page-break-after: avoid;
+        }
+
+        .section-bar {
+            display: inline-block;
+            width: 1.1mm;
+            height: 3.6mm;
+            background-color: #1d4ed8;
+            margin-right: 2mm;
+            vertical-align: -0.3mm;
+        }
+
+        .section-hint {
+            font-size: 7.5pt;
+            font-weight: 400;
+            color: #9aa5b4;
+            margin-left: 2mm;
+        }
+
+        /* ---------------------------------------------------------------- 指标卡 */
+        table.metrics {
+            width: 100%;
+            border-collapse: collapse;
             page-break-inside: avoid;
         }
 
-        .chart img {
+        table.metrics td.metric {
+            width: 33.33%;
+            border: 0.3mm solid #e3e9f2;
+            background-color: #f8fafd;
+            padding: 2.6mm 3mm 3mm 3mm;
+            vertical-align: top;
+        }
+
+        table.metrics td.metric-em {
+            background-color: #eef3ff;
+            border-color: #cdd9f7;
+        }
+
+        .metric-label {
+            font-size: 7.5pt;
+            color: #7c8899;
+        }
+
+        .metric-value {
+            margin-top: 1mm;
+            font-size: 15pt;
+            font-weight: 700;
+            color: #1b2436;
+        }
+
+        .metric-em .metric-value {
+            color: #1d4ed8;
+        }
+
+        .metric-unit {
+            font-size: 8pt;
+            font-weight: 400;
+            color: #7c8899;
+            margin-left: 1.4mm;
+        }
+
+        /* ---------------------------------------------------------------- 表格 */
+        table.grid {
             width: 100%;
-            max-width: 176mm;
+            border-collapse: collapse;
+            page-break-inside: auto;
+        }
+
+        table.grid th {
+            background-color: #eef2f8;
+            color: #45536b;
+            font-size: 8pt;
+            font-weight: 700;
+            text-align: left;
+            padding: 1.8mm 2.4mm;
+            border-bottom: 0.4mm solid #d8e0ec;
+        }
+
+        table.grid td {
+            padding: 1.2mm 2.4mm;
+            font-size: 9pt;
+            border-bottom: 0.3mm solid #edf1f7;
+            vertical-align: middle;
+        }
+
+        table.grid tr.alt td {
+            background-color: #fbfcfe;
+        }
+
+        table.grid td.num {
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+            color: #22304a;
+            width: 22mm;
+        }
+
+        table.grid td.num-strong {
+            text-align: right;
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+            color: #1b2436;
+            width: 22mm;
+        }
+
+        table.grid td.unit {
+            width: 18mm;
+            color: #7c8899;
+            text-align: center;
+        }
+
+        table.grid td.param {
+            width: 46%;
+        }
+
+        /* ---------------------------------------------------------------- 曲线 */
+        .chart {
+            page-break-inside: avoid;
+            margin-bottom: 2mm;
+        }
+
+        /*
+         * 必须写死宽高：只给 width:100% 时 openhtmltopdf 会先按图片固有像素（1440×380px ≈ 381×100mm）
+         * 估算高度，导致 page-break-inside:avoid 误判「放不下」而把整块曲线推到下一页。
+         * 180 × 38mm 与画布 720×152 同比例，不会变形。
+         */
+        .chart img {
+            width: 180mm;
+            height: 38mm;
+            display: block;
+            border: 0.3mm solid #e3e9f2;
         }
 
         .chart-caption {
+            margin-top: 1.2mm;
+            text-align: center;
+            font-size: 7.5pt;
+            color: #8b97ab;
+        }
+
+        /* ---------------------------------------------------------------- 电机 */
+        /*
+         * 显式换页：page-break-inside/after 的 avoid 链会让「曲线 + 选入电机」被当成一个整体，
+         * 一旦整体放不进当前页就双双下移，结果第一页只剩指标与输入。这里把「选型结果」钉在第二页，
+         * 使每个方案固定为「计算页 + 选型页」两页。
+         */
+        .section-motor {
+            page-break-before: always;
+        }
+
+        table.cols {
+            width: 100%;
+            border-collapse: collapse;
+            page-break-inside: avoid;
+        }
+
+        table.cols td.col-left {
+            width: 44%;
+            vertical-align: top;
+            padding: 0;
+        }
+
+        table.cols td.col-gap {
+            width: 4%;
+        }
+
+        table.cols td.col-right {
+            width: 52%;
+            vertical-align: top;
+            padding: 0;
+        }
+
+        /* 选型页只有两列数据，行距放宽一点更好读 */
+        table.cols table.grid td {
+            padding: 1.9mm 2.4mm;
+        }
+
+        table.cols table.grid th {
+            padding: 2mm 2.4mm;
+        }
+
+        .col-title {
             font-size: 9pt;
-            color: #606266;
+            font-weight: 700;
+            color: #45536b;
+            border-bottom: 0.3mm solid #d8e0ec;
+            padding-bottom: 1.4mm;
+            margin-bottom: 2mm;
+        }
+
+        .verdict {
+            font-size: 9pt;
+            font-weight: 700;
+            padding: 1.6mm 2.4mm;
+            margin-bottom: 2mm;
+        }
+
+        .verdict.pass {
+            color: #0f7b4d;
+            background-color: #eaf7f0;
+            border-left: 0.9mm solid #16a06a;
+        }
+
+        .verdict.fail {
+            color: #b42318;
+            background-color: #fdecea;
+            border-left: 0.9mm solid #e0483a;
+        }
+
+        .verdict.unknown {
+            color: #6b7280;
+            background-color: #f3f5f9;
+            border-left: 0.9mm solid #a9b3c4;
+        }
+
+        .verdict-warn {
+            display: block;
+            font-size: 8pt;
+            font-weight: 700;
+            color: #b42318;
             margin-top: 1mm;
         }
 
         .supply {
-            margin-top: 1mm;
-            font-size: 9.5pt;
+            margin-top: 2mm;
+            font-size: 8pt;
+            color: #4b5a72;
         }
+
+        .supply-ok {
+            color: #0f7b4d;
+        }
+
+        .supply-bad {
+            color: #b42318;
+        }
+
+        .model-line {
+            font-size: 10pt;
+            font-weight: 700;
+            color: #1b2436;
+            margin-bottom: 2mm;
+        }
+
+        .tag {
+            font-size: 7.5pt;
+            font-weight: 400;
+            color: #1d4ed8;
+            background-color: #eef3ff;
+            border: 0.25mm solid #cdd9f7;
+            padding: 0.6mm 1.6mm;
+            margin-left: 2mm;
+        }
+
+        .tag-out {
+            color: #8a6100;
+            background-color: #fdf4dc;
+            border-color: #e2cd94;
+        }
+
+        .note-warn {
+            font-size: 8pt;
+            color: #8a6100;
+            background-color: #fdf4dc;
+            border-left: 0.9mm solid #d9b96a;
+            padding: 1.4mm 2.4mm;
+            margin-bottom: 2mm;
+        }
+
+        .note-muted {
+            font-size: 8.5pt;
+            color: #8b97ab;
+            background-color: #f6f8fc;
+            border: 0.3mm solid #e3e9f2;
+            padding: 2.4mm 3mm;
+        }
+
+        .error-box {
+            margin-top: 3mm;
+            border: 0.3mm solid #e3b6b0;
+            border-left: 1.2mm solid #b42318;
+            background-color: #fdecea;
+            padding: 3mm 4mm;
+            font-size: 9.5pt;
+            color: #b42318;
+        }
+
+        .error-title {
+            font-weight: 700;
+            margin-bottom: 1.2mm;
+        }
+
+        .error-hint {
+            margin-top: 1.6mm;
+            font-size: 8.5pt;
+            color: #8a5a52;
+        }
+
+        ul.notes {
+            margin: 0;
+            padding-left: 4.5mm;
+        }
+
+        ul.notes li {
+            font-size: 8pt;
+            color: #6b7a90;
+            line-height: 1.9;
+        }
+
     </style>
 </head>
 <body>
 
 <!-- ================= 封面 ================= -->
 <div class="cover">
-    <h1>电机选型报告</h1>
-    <div class="subtitle" th:text="${report.projectName}">项目名称</div>
-    <div class="meta">
-        <div>轴名称：<span th:text="${report.axisName}">轴名称</span></div>
-        <div>报告日期：<span th:text="${report.reportDate}">日期</span></div>
-        <div>方案数量：<span th:text="${report.planCount}">0</span> 条</div>
-        <div>运动模式：<span th:text="${report.modeLabel}">点到点</span></div>
-        <div>S 曲线：<span th:text="${report.smoothLabel}">关闭</span></div>
-        <div>安全余量：<span th:text="${report.marginLabel}">下限 30%</span></div>
-        <div th:if="${report.customerName != null}">
-            客户名称：<span th:text="${report.customerName}">客户</span>
-        </div>
-    </div>
-</div>
+    <table class="brand-bar">
+        <tr>
+            <td class="brand-name">AKRIBIS</td>
+            <td class="brand-tag">MOTION CONTROL</td>
+        </tr>
+    </table>
 
-<!-- ================= 方案目录 ================= -->
-<div class="toc">
-    <h2>方案目录</h2>
-    <div th:if="${report.workingConditionNote != null}" class="plan-summary">
-        工况说明：<span th:text="${report.workingConditionNote}"></span>
+    <div class="cover-kicker">MOTOR SIZING REPORT</div>
+    <h1 class="cover-title">电机选型报告</h1>
+    <div class="cover-project" th:text="${report.projectName}">项目名称</div>
+    <div class="cover-rule"></div>
+
+    <table class="meta">
+        <tr>
+            <th>轴名称</th>
+            <td th:text="${report.axisName}">Axis 1</td>
+            <th>报告日期</th>
+            <td th:text="${report.reportDate}">2026-11-19</td>
+        </tr>
+        <tr>
+            <th>页签类型</th>
+            <td th:text="${report.axisLabel}">直线电机</td>
+            <th>方案数量</th>
+            <td th:text="|${report.planCount} 条|">1 条</td>
+        </tr>
+        <tr>
+            <th>客户名称</th>
+            <td th:text="${report.customerName != null} ? ${report.customerName} : '—'">—</td>
+            <th>工况说明</th>
+            <td th:text="${report.workingConditionNote != null} ? ${report.workingConditionNote} : '—'">—</td>
+        </tr>
+    </table>
+
+    <table class="chips">
+        <tr>
+            <td class="chip">
+                <div class="chip-label">运动模式</div>
+                <div class="chip-value" th:text="${report.modeLabel}">点到点</div>
+            </td>
+            <td class="chip">
+                <div class="chip-label">运动形状</div>
+                <div class="chip-value" th:text="${report.shapeLabel}">梯形</div>
+            </td>
+            <td class="chip">
+                <div class="chip-label">S 曲线</div>
+                <div class="chip-value" th:text="${report.smoothLabel}">关闭</div>
+            </td>
+            <td class="chip">
+                <div class="chip-label">安全余量</div>
+                <div class="chip-value" th:text="${report.marginLabel}">下限 30%</div>
+            </td>
+        </tr>
+    </table>
+
+    <div th:if="${report.planCount > 1}">
+        <div class="index-title">方案索引</div>
+        <table class="index">
+            <tr th:each="plan : ${report.plans}">
+                <td class="no" th:text="|方案 ${plan.planNo}|">方案 1</td>
+                <td th:text="${plan.modelLabel}">型号</td>
+            </tr>
+        </table>
     </div>
-    <ul>
-        <li th:each="plan : ${report.plans}">
-            方案 <span th:text="${plan.planNo}">1</span>
-            <span th:text="|（${plan.summary}）|">（型号）</span>
-        </li>
-    </ul>
+
+    <div class="cover-note">
+        本报告由 MotorSizer 依据录入工况自动生成：计算口径与软件界面一致，电机参数取自电机库记录；
+        每个方案只包含最终选入的电机，不含候选清单。
+    </div>
 </div>
 
 <!-- ================= 逐方案 ================= -->
-<div th:each="plan : ${report.plans}" class="plan-section">
-    <h2>方案 <span th:text="${plan.planNo}">1</span></h2>
-    <div class="plan-summary" th:if="${plan.ok}">
-        选定型号：<span th:text="${plan.summary}">未选取电机</span>
-    </div>
+<div class="plan" th:each="plan : ${report.plans}">
+    <table class="plan-head">
+        <tr>
+            <td class="plan-no" th:text="|方案 ${plan.planNo}|">方案 1</td>
+            <td class="plan-model">
+                <span class="plan-model-label" th:if="${plan.ok}">选入电机</span>
+                <span class="plan-model-value" th:if="${plan.ok}" th:text="${plan.modelLabel}">型号</span>
+            </td>
+        </tr>
+    </table>
 
     <div th:if="${!plan.ok}" class="error-box">
-        该方案无法计算：<span th:text="${plan.error}">原因</span>
+        <div class="error-title">该方案无法计算</div>
+        <div th:text="${plan.error}">原因</div>
+        <div class="error-hint">请回到软件检查该方案的输入参数后重新导出。</div>
+    </div>
+
+    <!-- 无法计算时仍列出提交的工况，便于核对 -->
+    <div th:if="${!plan.ok and !#lists.isEmpty(plan.inputs)}">
+        <div class="section"><span class="section-bar"></span>提交的工况输入</div>
+        <table class="grid">
+            <thead>
+            <tr>
+                <th class="param">参数</th>
+                <th style="text-align:right; width:22mm;">用户输入</th>
+                <th style="text-align:right; width:22mm;">计算结果</th>
+                <th style="text-align:center; width:18mm;">单位</th>
+            </tr>
+            </thead>
+            <tbody>
+            <tr th:each="row, rowStat : ${plan.inputs}" th:classappend="${rowStat.odd} ? ' alt'">
+                <td class="param" th:text="${row.label}">参数</td>
+                <td class="num" th:text="${row.input}">—</td>
+                <td class="num-strong" th:text="${row.computed}">—</td>
+                <td class="unit" th:text="${row.unit}"></td>
+            </tr>
+            </tbody>
+        </table>
     </div>
 
     <div th:if="${plan.ok}">
-        <div class="section-title">工况输入</div>
-        <table>
+        <!-- 理论计算结果 -->
+        <div class="section" th:if="${!#lists.isEmpty(plan.metricRows)}">
+            <span class="section-bar"></span>理论计算结果
+            <span class="section-hint">仅含负载，未计电机自身惯量</span>
+        </div>
+        <table class="metrics" th:if="${!#lists.isEmpty(plan.metricRows)}">
+            <tr th:each="chunk : ${plan.metricRows}">
+                <td class="metric"
+                    th:each="metric : ${chunk}"
+                    th:classappend="${metric.emphasis} ? ' metric-em'">
+                    <div class="metric-label" th:text="${metric.label}">指标</div>
+                    <div class="metric-value">
+                        <span th:text="${metric.value}">—</span>
+                        <span class="metric-unit" th:if="${metric.unit != null and metric.unit != ''}"
+                              th:text="${metric.unit}">N</span>
+                    </div>
+                </td>
+            </tr>
+        </table>
+
+        <!-- 工况输入 -->
+        <div class="section">
+            <span class="section-bar"></span>工况输入
+            <span class="section-hint">右列为实际参与计算的值</span>
+        </div>
+        <table class="grid">
             <thead>
-            <tr><th>参数</th><th>数值</th><th>单位</th></tr>
+            <tr>
+                <th class="param">参数</th>
+                <th style="text-align:right; width:22mm;">用户输入</th>
+                <th style="text-align:right; width:22mm;">计算结果</th>
+                <th style="text-align:center; width:18mm;">单位</th>
+            </tr>
             </thead>
             <tbody>
-            <tr th:each="row : ${plan.inputs}">
-                <td th:text="${row.label}">参数</td>
-                <td class="value" th:text="${row.value}">—</td>
+            <tr th:each="row, rowStat : ${plan.inputs}" th:classappend="${rowStat.odd} ? ' alt'">
+                <td class="param" th:text="${row.label}">参数</td>
+                <td class="num" th:text="${row.input}">—</td>
+                <td class="num-strong" th:text="${row.computed}">—</td>
                 <td class="unit" th:text="${row.unit}"></td>
             </tr>
             </tbody>
         </table>
 
-        <div class="section-title">理论计算结果</div>
-        <table>
-            <thead>
-            <tr><th>项目</th><th>数值</th><th>单位</th></tr>
-            </thead>
-            <tbody>
-            <tr th:each="row : ${plan.theoretical}">
-                <td th:text="${row.label}">项目</td>
-                <td class="value" th:text="${row.value}">—</td>
-                <td class="unit" th:text="${row.unit}"></td>
-            </tr>
-            </tbody>
-        </table>
-
-        <div class="section-title">推荐清单</div>
-        <div th:if="${#lists.isEmpty(plan.candidates)}" class="muted">
-            当前无合规型号。
+        <!-- 运动曲线 -->
+        <div class="section" th:if="${plan.speedChart != null}">
+            <span class="section-bar"></span>运动曲线
         </div>
-        <table th:if="${!#lists.isEmpty(plan.candidates)}" class="candidate-table">
-            <thead>
-            <tr><th>型号</th><th>类型</th><th>Safety</th><th>判定依据</th><th>标记</th></tr>
-            </thead>
-            <tbody>
-            <tr th:each="candidate : ${plan.candidates}">
-                <td th:text="${candidate.label}">型号</td>
-                <td th:text="${candidate.typeLabel}">类型</td>
-                <td class="value" th:text="${candidate.safety}">—</td>
-                <td th:text="${candidate.reasons}">依据</td>
-                <td th:text="${candidate.overSized}"></td>
-            </tr>
-            </tbody>
-        </table>
-
-        <div class="section-title">选定型号</div>
-        <div th:if="${plan.selected == null}" class="muted">未选取电机</div>
-        <div th:if="${plan.selected != null}">
-            <div>
-                <span th:text="${plan.selected.modelLabel}">型号</span>
-                <span class="muted" th:text="|（${plan.selected.inRecommendation}）|">状态</span>
-            </div>
-            <div th:if="${plan.selected.outOfRangeReason != null}" class="warn"
-                 th:text="${plan.selected.outOfRangeReason}"></div>
-            <table>
-                <thead>
-                <tr><th>参数</th><th>数值</th><th>单位</th></tr>
-                </thead>
-                <tbody>
-                <tr th:each="row : ${plan.selected.parameters}">
-                    <td th:text="${row.label}">参数</td>
-                    <td class="value" th:text="${row.value}">—</td>
-                    <td class="unit" th:text="${row.unit}"></td>
-                </tr>
-                </tbody>
-            </table>
+        <div th:if="${plan.speedChart == null}">
+            <div class="section"><span class="section-bar"></span>运动曲线</div>
+            <div class="note-muted">暂无曲线数据。</div>
         </div>
-
-        <div class="section-title">电机实际应用值</div>
-        <div th:if="${#lists.isEmpty(plan.applied)}" class="muted">选取电机后显示应用值。</div>
-        <div th:if="${!#lists.isEmpty(plan.applied)}">
-            <div class="verdict"
-                 th:classappend="${plan.thermalVerdict == '线圈温度超限' ? ' verdict-bad' : ''}">
-                <span th:text="${plan.thermalVerdict}">热校核结论</span>
-                <span th:if="${plan.overVoltageWarning != ''}" class="verdict-bad"
-                      th:text="| · ${plan.overVoltageWarning}|"></span>
-            </div>
-            <table>
-                <thead>
-                <tr><th>应用值</th><th>数值</th><th>单位</th></tr>
-                </thead>
-                <tbody>
-                <tr th:each="row : ${plan.applied}">
-                    <td th:text="${row.label}">项目</td>
-                    <td class="value" th:text="${row.value}">—</td>
-                    <td class="unit" th:text="${row.unit}"></td>
-                </tr>
-                </tbody>
-            </table>
-            <div th:if="${plan.supplyText != ''}" class="supply" th:text="${plan.supplyText}"></div>
-        </div>
-
-        <div class="section-title">运动曲线</div>
-        <div th:if="${plan.speedChart == null}" class="muted">暂无曲线数据。</div>
         <div th:if="${plan.speedChart != null}">
             <div class="chart">
                 <img th:src="${plan.speedChart}" alt="速度 / 时间图"/>
                 <div class="chart-caption">
-                    图 1：速度 / 时间图（<span th:text="${plan.velocityUnit}"></span>）
+                    图 1　速度 / 时间图（<span th:text="${plan.velocityUnit}"></span>）
                 </div>
             </div>
             <div class="chart">
-                <img th:src="${plan.forceChart}" alt="力 / 力矩 / 时间图"/>
+                <img th:src="${plan.forceChart}" alt="推力 / 力矩 / 时间图"/>
                 <div class="chart-caption">
-                    图 2：推力 / 力矩 / 时间图（<span th:text="${plan.forceUnit}"></span>）
+                    图 2　推力 / 力矩 / 时间图（<span th:text="${plan.forceUnit}"></span>）
                 </div>
             </div>
         </div>
+
+        <!-- 选入电机 -->
+        <div class="section section-motor"><span class="section-bar"></span>选入电机</div>
+        <div th:if="${plan.selected == null}" class="note-muted">
+            该方案未选取电机。在软件中选择电机后可导出含应用值的报告。
+        </div>
+
+        <table class="cols" th:if="${plan.selected != null}">
+            <tr>
+                <td class="col-left">
+                    <div class="col-title">电机实际应用值</div>
+                    <div class="verdict" th:classappend="${plan.verdictTone}"
+                         th:text="${plan.verdictText}">电机选型合适</div>
+                    <div class="verdict-warn" th:if="${plan.overVoltageWarning != ''}"
+                         th:text="${plan.overVoltageWarning}"></div>
+                    <table class="grid">
+                        <thead>
+                        <tr>
+                            <th>应用值</th>
+                            <th style="text-align:right; width:20mm;">数值</th>
+                            <th style="text-align:center; width:14mm;">单位</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        <tr th:each="row, rowStat : ${plan.applied}" th:classappend="${rowStat.odd} ? ' alt'">
+                            <td th:text="${row.label}">项目</td>
+                            <td class="num-strong" style="width:20mm;" th:text="${row.value}">—</td>
+                            <td class="unit" style="width:14mm;" th:text="${row.unit}"></td>
+                        </tr>
+                        </tbody>
+                    </table>
+                    <div class="supply" th:if="${plan.supplyText != ''}"
+                         th:classappend="${plan.supplyOk} ? ' supply-ok'"
+                         th:text="${plan.supplyText}"></div>
+                </td>
+                <td class="col-gap"></td>
+                <td class="col-right">
+                    <div class="col-title">选入电机数据</div>
+                    <div class="model-line">
+                        <span th:text="${plan.selected.modelLabel}">型号</span>
+                        <span class="tag" th:classappend="${plan.selected.recommended} ? '' : ' tag-out'"
+                              th:text="${plan.selected.inRecommendation}">在推荐范围内</span>
+                    </div>
+                    <div class="note-warn" th:if="${plan.selected.outOfRangeReason != null}"
+                         th:text="${plan.selected.outOfRangeReason}"></div>
+                    <table class="grid">
+                        <thead>
+                        <tr>
+                            <th>参数</th>
+                            <th style="text-align:right; width:20mm;">数值</th>
+                            <th style="text-align:center; width:20mm;">单位</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        <tr th:each="row, rowStat : ${plan.selected.parameters}"
+                            th:classappend="${rowStat.odd} ? ' alt'">
+                            <td th:text="${row.label}">参数</td>
+                            <td class="num-strong" style="width:20mm;" th:text="${row.value}">—</td>
+                            <td class="unit" style="width:20mm;" th:text="${row.unit}"></td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </td>
+            </tr>
+        </table>
+
+        <!-- 口径说明（每方案一页，随本方案结论一起给出） -->
+        <div class="section"><span class="section-bar"></span>口径说明</div>
+        <ul class="notes">
+            <li>理论计算结果仅含负载，未计入电机自身惯量；峰值需求同样仅含负载。</li>
+            <li>应用值按电机库参数与本次工况推导，线圈温度为热平衡估算值。</li>
+            <li>供电判定取「供电母线 ≥ 所需电压」；未填写供电母线时不做判定。</li>
+            <li>运动曲线由与软件界面同一份采样数据重绘，阶段分界为加速 / 匀速 / 减速切换点。</li>
+            <li>电机参数取自电机库记录，如与最新样册不一致，请以样册为准。</li>
+        </ul>
     </div>
 </div>
 
