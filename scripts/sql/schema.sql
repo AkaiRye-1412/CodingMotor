@@ -75,14 +75,14 @@ CREATE INDEX IF NOT EXISTS idx_motor_type_structure_cooling
 -- ----------------------------------------------------------------------------
 -- 表 2：motor_linear_spec —— 直线电机规格（与 motor 1:1）
 -- 字段模板见 doc/design/01 第 6 章 / prototype/js/data.js: motorFieldGroups.linear
--- 必填 10 项 NOT NULL（规则 R3-2）：需求 6.2 第 1 档 + 第 49 轮电流必填
+-- 必填 9 项 NOT NULL（规则 R3-2）：需求 6.2 第 1 档 + 第 49 轮电流必填；最高线圈温度第 67 轮转选填
 -- 单位：全部为内部计算单位（K2 factor 已在应用层完成换算，第 63 轮裁定）
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS motor_linear_spec (
     id                  BIGINT          AUTO_INCREMENT PRIMARY KEY,
     motor_id            BIGINT          NOT NULL COMMENT '逻辑关联 motor.id（规则 R4-2：不建物理外键）',
 
-    -- ===== 性能参数 / 必填 10 项 =====
+    -- ===== 性能参数 / 必填 9 项 + 选填 1 项 =====
     force_cont          DECIMAL(18,6)   NOT NULL COMMENT '持续推力 (N)',
     force_peak          DECIMAL(18,6)   NOT NULL COMMENT '峰值推力 (N)',
     kf                  DECIMAL(18,6)   NOT NULL COMMENT '力常数 (N/Arms)',
@@ -90,7 +90,7 @@ CREATE TABLE IF NOT EXISTS motor_linear_spec (
     r25                 DECIMAL(18,6)   NOT NULL COMMENT '相间电阻 @25°C (Ω)',
     i_cont              DECIMAL(18,6)   NOT NULL COMMENT '持续电流 (Arms)',
     i_peak              DECIMAL(18,6)   NOT NULL COMMENT '峰值电流 (Arms)',
-    t_max               DECIMAL(18,6)   NOT NULL COMMENT '最高线圈温度 (°C)',
+    t_max               DECIMAL(18,6)            COMMENT '最高线圈温度 (°C)；选填，留空时不做热校核（第 67 轮）',
     kth                 DECIMAL(18,6)   NOT NULL COMMENT '热耗散常数 (W/°C)',
     u_bus               DECIMAL(18,6)   NOT NULL COMMENT '最高母线电压 (Vdc)',
 
@@ -123,13 +123,13 @@ CREATE INDEX IF NOT EXISTS idx_linear_spec_motor ON motor_linear_spec (motor_id)
 
 -- ----------------------------------------------------------------------------
 -- 表 3：motor_torque_spec —— 力矩（旋转）电机规格（与 motor 1:1）
--- 必填 10 项 NOT NULL；双转速阈值可空（第 66 轮：样册口径不统一，缺项只跳过准入②）
+-- 必填 9 项 NOT NULL；双转速阈值可空（第 66 轮：样册口径不统一，缺项只跳过准入②）；
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS motor_torque_spec (
     id                  BIGINT          AUTO_INCREMENT PRIMARY KEY,
     motor_id            BIGINT          NOT NULL COMMENT '逻辑关联 motor.id（规则 R4-2：不建物理外键）',
 
-    -- ===== 性能参数 / 必填 10 项 =====
+    -- ===== 性能参数 / 必填 9 项 + 选填 1 项 =====
     torque_cont         DECIMAL(18,6)   NOT NULL COMMENT '持续转矩 @100°C (Nm)',
     torque_peak         DECIMAL(18,6)   NOT NULL COMMENT '峰值转矩 (Nm)',
     kt                  DECIMAL(18,6)   NOT NULL COMMENT '转矩常数 (Nm/Arms)',
@@ -137,7 +137,7 @@ CREATE TABLE IF NOT EXISTS motor_torque_spec (
     r25                 DECIMAL(18,6)   NOT NULL COMMENT '相间电阻 @25°C (Ω)',
     i_cont              DECIMAL(18,6)   NOT NULL COMMENT '持续电流 (Arms)',
     i_peak              DECIMAL(18,6)   NOT NULL COMMENT '峰值电流 (Arms)',
-    t_max               DECIMAL(18,6)   NOT NULL COMMENT '最高线圈温度 (°C)',
+    t_max               DECIMAL(18,6)            COMMENT '最高线圈温度 (°C)；选填，留空时不做热校核（第 67 轮）',
     kth                 DECIMAL(18,6)   NOT NULL COMMENT '热耗散常数 (W/°C)',
     u_bus               DECIMAL(18,6)   NOT NULL COMMENT '最高母线电压 (Vdc)',
     max_speed_peak      DECIMAL(18,6)            COMMENT '最高转速 @峰值转矩 (rpm)；留空只跳过准入②（第 66 轮）',
@@ -171,7 +171,7 @@ CREATE INDEX IF NOT EXISTS idx_torque_spec_motor ON motor_torque_spec (motor_id)
 
 -- ----------------------------------------------------------------------------
 -- 表 4：motor_coil_spec —— 音圈电机规格（与 motor 1:1）
--- 必填 10 项与直线一致（第 48/49 轮删一法实测结论），但语义为单相：
+-- 必填 9 项与直线一致（第 48/49 轮删一法实测结论），但语义为单相：
 --   kf 单位 N/A（非 N/Arms）、r25 为单相电阻（非相间电阻）、i_cont/i_peak 为 A（非 Arms）
 --   故不能与直线规格合并存储（避免同名列承载不同物理意义）
 -- ----------------------------------------------------------------------------
@@ -179,7 +179,7 @@ CREATE TABLE IF NOT EXISTS motor_coil_spec (
     id                  BIGINT          AUTO_INCREMENT PRIMARY KEY,
     motor_id            BIGINT          NOT NULL COMMENT '逻辑关联 motor.id（规则 R4-2：不建物理外键）',
 
-    -- ===== 性能参数 / 必填 10 项（单相语义）=====
+    -- ===== 性能参数 / 必填 9 项 + 选填 1 项（单相语义）=====
     force_cont          DECIMAL(18,6)   NOT NULL COMMENT '持续推力 @100°C (N)',
     force_peak          DECIMAL(18,6)   NOT NULL COMMENT '峰值推力 (N)',
     kf                  DECIMAL(18,6)   NOT NULL COMMENT '力常数 (N/A，单相)',
@@ -187,7 +187,7 @@ CREATE TABLE IF NOT EXISTS motor_coil_spec (
     r25                 DECIMAL(18,6)   NOT NULL COMMENT '电阻 @25°C (Ω，单相非相间)',
     i_cont              DECIMAL(18,6)   NOT NULL COMMENT '持续电流 (A，单相)',
     i_peak              DECIMAL(18,6)   NOT NULL COMMENT '峰值电流 (A，单相)',
-    t_max               DECIMAL(18,6)   NOT NULL COMMENT '最高线圈温度 (°C)',
+    t_max               DECIMAL(18,6)            COMMENT '最高线圈温度 (°C)；选填，留空时不做热校核（第 67 轮）',
     kth                 DECIMAL(18,6)   NOT NULL COMMENT '热耗散常数 (W/°C)',
     u_bus               DECIMAL(18,6)   NOT NULL COMMENT '最高电压 (Vdc)',
 
@@ -224,6 +224,12 @@ CREATE INDEX IF NOT EXISTS idx_coil_spec_motor ON motor_coil_spec (motor_id);
 -- ============================================================================
 ALTER TABLE motor_torque_spec ALTER COLUMN max_speed_peak SET NULL;
 ALTER TABLE motor_torque_spec ALTER COLUMN max_speed_cont SET NULL;
+
+-- 第 67 轮：最高线圈温度改为选填（三套模板同步）。缺失时热校核不判定，
+-- 准入不再因缺它而 UNKNOWN；存量库需放开该列，否则留空保存会被 NOT NULL 拒绝。
+ALTER TABLE motor_linear_spec ALTER COLUMN t_max SET NULL;
+ALTER TABLE motor_torque_spec ALTER COLUMN t_max SET NULL;
+ALTER TABLE motor_coil_spec ALTER COLUMN t_max SET NULL;
 
 
 -- ============================================================================

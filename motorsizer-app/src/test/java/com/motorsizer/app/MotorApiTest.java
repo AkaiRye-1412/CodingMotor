@@ -119,6 +119,24 @@ class MotorApiTest {
     }
 
     /**
+     * 第 67 轮：最高线圈温度改为选填——样册常只标绝缘等级、不给具体温度上限，
+     * 按必填会卡住整批录入。留空仍可保存，只是热校核不出结论（K1 侧按未校核展示）。
+     */
+    @Test
+    void linearWithoutCoilTemperatureIsAccepted() throws Exception {
+        Map<String, Object> payload = linearPayload("TPL-NO-TMAX-001");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> spec = (Map<String, Object>) payload.get("spec");
+        spec.remove("tMax");
+
+        long id = createMotor(payload);
+
+        mockMvc.perform(get("/api/motors/{id}", id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.spec.tMax").doesNotExist());
+    }
+
+    /**
      * 第 66 轮：力矩的双转速阈值改为选填——样册口径不统一（AXD 写「@ 持续扭矩（600V）」、
      * AXM 只给一行「最高转速」），按必填会让整批型号在入库预览里「跳过」。
      * 缺此项只跳过准入②并注明「未校核」，不再拒绝保存。

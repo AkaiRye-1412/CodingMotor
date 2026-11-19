@@ -69,6 +69,9 @@ const speedReferences = computed(() => {
 
 <style scoped>
 .curve-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   transition: opacity 0.2s ease;
 }
 

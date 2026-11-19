@@ -136,7 +136,7 @@ class GoldenBaselineTest {
 
         List<String> missing = new ArrayList<>();
         result.path("missing").forEach(node -> missing.add(node.asText()));
-        assertThat(missing).containsExactly("最高线圈温度", "热耗散常数 ({cool})");
+        assertThat(missing).containsExactly("热耗散常数 ({cool})");
     }
 
     @Test

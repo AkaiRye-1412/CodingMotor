@@ -17,11 +17,12 @@ class MotorCatalogTemplatesTest {
 
     @Test
     void requiredCountsMatchDatabaseNotNullColumns() {
-        // schema.sql 的 NOT NULL 数：直线 10 / 力矩 10 / 音圈 10（R13 漂移防线）
-        // 力矩第 66 轮由 12 降为 10：双转速阈值改为选填，规格表对应列也已放开
-        assertThat(MotorCatalogTemplates.of(MotorType.LINEAR).requiredKeys()).hasSize(10);
-        assertThat(MotorCatalogTemplates.of(MotorType.TORQUE).requiredKeys()).hasSize(10);
-        assertThat(MotorCatalogTemplates.of(MotorType.COIL).requiredKeys()).hasSize(10);
+        // schema.sql 的 NOT NULL 数：直线 9 / 力矩 9 / 音圈 9（R13 漂移防线）
+        // 力矩第 66 轮由 12 降为 10（双转速阈值改选填）；
+        // 第 67 轮三套模板再由 10 降为 9（最高线圈温度改选填，缺值不做热校核）
+        assertThat(MotorCatalogTemplates.of(MotorType.LINEAR).requiredKeys()).hasSize(9);
+        assertThat(MotorCatalogTemplates.of(MotorType.TORQUE).requiredKeys()).hasSize(9);
+        assertThat(MotorCatalogTemplates.of(MotorType.COIL).requiredKeys()).hasSize(9);
     }
 
     @Test

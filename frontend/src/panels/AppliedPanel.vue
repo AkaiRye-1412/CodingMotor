@@ -4,6 +4,14 @@ import { useCalculation } from '@/composables/useCalculation'
 import { useProjectStore } from '@/stores/project'
 import { formatNumber } from '@/utils/format'
 
+const props = withDefaults(
+  defineProps<{
+    /** 由 App 按左列底部动态计算，内容较短时也把面板撑到与「用户输入」底部齐平。 */
+    minHeight?: number | null
+  }>(),
+  { minHeight: null },
+)
+
 /** M8：电机实际应用值 7 项 + 热校核/供电结论（第 45 轮）。 */
 const project = useProjectStore()
 const { result } = useCalculation()
@@ -95,7 +103,10 @@ const rows = computed<AppliedRow[]>(() => {
 </script>
 
 <template>
-  <div class="applied-panel">
+  <div
+    class="applied-panel"
+    :style="props.minHeight ? { minHeight: `${props.minHeight}px` } : undefined"
+  >
     <div v-if="!selected" class="section-placeholder">
       选取电机后显示：线圈温度、电流、母线电压、安全系数。
     </div>

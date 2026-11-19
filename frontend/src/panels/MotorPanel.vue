@@ -4,6 +4,16 @@ import { useCalculation } from '@/composables/useCalculation'
 import { useMotorStore } from '@/stores/motor'
 import { formatNumber } from '@/utils/format'
 
+const props = withDefaults(
+  defineProps<{
+    /** 内容区最小高度：保证模块底部与左列「用户输入」对齐。 */
+    minHeight?: number | null
+    /** 参数表最大高度：超出时表格内部出现竖向滚动条。 */
+    tableMaxHeight?: number | null
+  }>(),
+  { minHeight: null, tableMaxHeight: null },
+)
+
 /** M8：选入电机数据（样册式参数表由服务端按 K2 display 裁剪并附带派生项）。 */
 const motorStore = useMotorStore()
 const { result } = useCalculation()
@@ -41,7 +51,10 @@ function handleSelect(value: number): void {
 </script>
 
 <template>
-  <div class="motor-panel">
+  <div
+    class="motor-panel"
+    :style="props.minHeight ? { minHeight: `${props.minHeight}px` } : undefined"
+  >
     <el-select
       :model-value="motorStore.selectedMotorId ?? 0"
       placeholder="未选取电机"
@@ -67,7 +80,15 @@ function handleSelect(value: number): void {
       {{ selected.outOfRangeReason }}
     </div>
 
-    <el-table v-if="parameterRows.length" :data="parameterRows" size="small" border>
+    <el-table
+      v-if="parameterRows.length"
+      :data="parameterRows"
+      size="small"
+      border
+      class="motor-param-table"
+      :max-height="props.tableMaxHeight ?? undefined"
+      scrollbar-always-on
+    >
       <el-table-column prop="label" label="参数">
         <template #default="{ row }">
           <span>{{ row.label }}</span>

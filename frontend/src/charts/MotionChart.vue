@@ -185,7 +185,6 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="chart-block">
-    <canvas ref="canvasRef" class="chart-canvas" />
-    <div class="chart-caption">{{ props.caption }}</div>
+    <canvas ref="canvasRef" class="chart-canvas" role="img" :aria-label="props.caption" />
   </div>
 </template>

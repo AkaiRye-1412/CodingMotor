@@ -7,6 +7,16 @@ import { useSettingStore } from '@/stores/setting'
 import type { MotorTypeCode } from '@/types/domain'
 import { formatPercent } from '@/utils/format'
 
+const props = withDefaults(
+  defineProps<{
+    /** 由 App 按左列底部动态计算，保证模块底部对齐；为空时用 CSS 兜底高度。 */
+    listMaxHeight?: number | null
+    /** 内容区最小高度，候选较少时也把面板撑到与「用户输入」底部齐平。 */
+    minHeight?: number | null
+  }>(),
+  { listMaxHeight: null, minHeight: null },
+)
+
 /** M7：候选筛选与推荐。服务端只返回通过准入的型号，按余量升序、不截断。 */
 const project = useProjectStore()
 const setting = useSettingStore()
@@ -43,7 +53,11 @@ function selectCandidate(motorId: number): void {
 </script>
 
 <template>
-  <div class="candidate-panel" :class="{ 'is-calculating': isCalculating }">
+  <div
+    class="candidate-panel"
+    :class="{ 'is-calculating': isCalculating }"
+    :style="props.minHeight ? { minHeight: `${props.minHeight}px` } : undefined"
+  >
     <div class="candidate-filters">
       <div class="filter-group">
         <span class="filter-title">系列</span>
@@ -66,7 +80,11 @@ function selectCandidate(motorId: number): void {
       <p class="empty-tip">可放宽安全余量下限、清除勾选过滤，或先在电机库中补充电机。</p>
     </div>
 
-    <ul v-else class="candidate-list">
+    <ul
+      v-else
+      class="candidate-list"
+      :style="props.listMaxHeight ? { maxHeight: `${props.listMaxHeight}px` } : undefined"
+    >
       <li
         v-for="candidate in candidates"
         :key="candidate.motorId"
@@ -129,10 +147,31 @@ function selectCandidate(motorId: number): void {
 .candidate-list {
   list-style: none;
   margin: 0;
-  padding: 0;
+  padding: 0 4px 0 0;
   display: flex;
   flex-direction: column;
   gap: 4px;
+  max-height: 460px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.candidate-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.candidate-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.candidate-list::-webkit-scrollbar-thumb {
+  background: #c0c4cc;
+  border-radius: 4px;
+}
+
+.candidate-list::-webkit-scrollbar-thumb:hover {
+  background: #909399;
 }
 
 .candidate-item {
