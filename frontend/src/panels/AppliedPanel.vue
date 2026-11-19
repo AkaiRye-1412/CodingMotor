@@ -193,9 +193,12 @@ const rows = computed<AppliedRow[]>(() => {
   width: 100%;
 }
 
+/*
+ * 表格可读性（第 63 轮）：原来是全表 700 粗 + 浅灰，13px 中文挤在一起发“昏”。
+ * 改为「表头加粗深灰、数值常规深墨 + 等宽数字」，扫读时列能对齐、字不糊。
+ */
 :deep(.el-table) {
-  color: var(--ms-text-secondary);
-  font-weight: 700;
+  color: var(--ms-text);
 }
 
 :deep(.el-table th.el-table__cell) {
@@ -204,38 +207,9 @@ const rows = computed<AppliedRow[]>(() => {
 }
 
 :deep(.el-table td.el-table__cell) {
-  font-weight: 700;
-  color: var(--ms-text-secondary);
-}
-
-:deep(.el-table) {
-  color: var(--ms-text-secondary);
-  font-weight: 700;
-}
-
-:deep(.el-table th.el-table__cell) {
-  font-weight: 700;
-  color: var(--ms-text-secondary);
-}
-
-:deep(.el-table td.el-table__cell) {
-  font-weight: 700;
-  color: var(--ms-text-secondary);
-}
-
-:deep(.el-table) {
-  color: var(--ms-text-secondary);
-  font-weight: 700;
-}
-
-:deep(.el-table th.el-table__cell) {
-  font-weight: 700;
-  color: var(--ms-text-secondary);
-}
-
-:deep(.el-table td.el-table__cell) {
-  font-weight: 700;
-  color: var(--ms-text-secondary);
+  font-weight: 400;
+  color: var(--ms-text);
+  font-variant-numeric: tabular-nums;
 }
 
 .supply-line {

@@ -522,7 +522,7 @@ function formatServerMessage(error: ApiError): string {
 .import-step p {
   margin: 0 0 12px;
   font-size: 13px;
-  color: var(--ms-text-secondary, #909399);
+  color: var(--ms-text-secondary);
   line-height: 1.6;
 }
 
@@ -553,7 +553,7 @@ function formatServerMessage(error: ApiError): string {
 
 .entry-label {
   font-size: 13px;
-  color: var(--ms-text-primary, #303133);
+  color: var(--ms-text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -566,7 +566,7 @@ function formatServerMessage(error: ApiError): string {
 
 .entry-unit {
   font-size: 12px;
-  color: var(--ms-text-secondary, #909399);
+  color: var(--ms-text-secondary);
   /* 长单位折行会把整行撑高、输入框错位，宁可溢出也保持一行 */
   white-space: nowrap;
 }
@@ -615,13 +615,13 @@ function formatServerMessage(error: ApiError): string {
 
 .entry-group-optional {
   border-left-color: var(--ms-border, #dcdfe6);
-  color: var(--ms-text-secondary, #909399);
+  color: var(--ms-text-secondary);
 }
 
 .entry-footnote {
   margin-top: 12px;
   font-size: 12px;
-  color: var(--ms-text-secondary, #909399);
+  color: var(--ms-text-secondary);
   line-height: 1.6;
 }
 </style>

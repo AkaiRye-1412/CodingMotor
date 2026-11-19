@@ -622,7 +622,7 @@ function statusType(status: string): 'success' | 'warning' | 'danger' {
   display: none;
 }
 .upload-tip {
-  color: #909399;
+  color: var(--ms-text-dim);
   font-size: 12px;
 }
 .history-collapse {
@@ -664,11 +664,11 @@ function statusType(status: string): 'success' | 'warning' | 'danger' {
 }
 .sheet-note {
   font-size: 12px;
-  color: #909399;
+  color: var(--ms-text-dim);
   line-height: 1.7;
 }
 .muted {
-  color: #909399;
+  color: var(--ms-text-dim);
 }
 .warn-text {
   color: var(--el-color-warning);

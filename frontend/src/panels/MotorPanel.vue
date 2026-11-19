@@ -133,9 +133,9 @@ function handleSelect(value: number): void {
   margin-left: 5px;
 }
 
+/* 表格可读性（第 63 轮）：与「电机实际应用值」表同一口径——表头加粗深灰、数值常规深墨 */
 :deep(.el-table) {
-  color: var(--ms-text-secondary);
-  font-weight: 700;
+  color: var(--ms-text);
 }
 
 :deep(.el-table th.el-table__cell) {
@@ -144,52 +144,13 @@ function handleSelect(value: number): void {
 }
 
 :deep(.el-table td.el-table__cell) {
-  font-weight: 700;
-  color: var(--ms-text-secondary);
+  font-weight: 400;
+  color: var(--ms-text);
+  font-variant-numeric: tabular-nums;
 }
 
 :deep(.motor-unit-cell .cell) {
   white-space: nowrap;
   word-break: keep-all;
-}
-
-:deep(.el-table) {
-  color: var(--ms-text-secondary);
-  font-weight: 700;
-}
-
-:deep(.el-table th.el-table__cell) {
-  font-weight: 700;
-  color: var(--ms-text-secondary);
-}
-
-:deep(.el-table td.el-table__cell) {
-  font-weight: 700;
-  color: var(--ms-text-secondary);
-}
-
-:deep(.motor-unit-cell .cell) {
-  white-space: nowrap;
-  word-break: keep-all;
-}
-
-:deep(.motor-unit-cell .cell) {
-  white-space: nowrap;
-  word-break: keep-all;
-}
-
-:deep(.el-table) {
-  color: var(--ms-text-secondary);
-  font-weight: 700;
-}
-
-:deep(.el-table th.el-table__cell) {
-  font-weight: 700;
-  color: var(--ms-text-secondary);
-}
-
-:deep(.el-table td.el-table__cell) {
-  font-weight: 700;
-  color: var(--ms-text-secondary);
 }
 </style>

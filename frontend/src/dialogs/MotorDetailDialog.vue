@@ -176,7 +176,7 @@ watch(
   align-items: center;
   gap: 8px;
   padding: 28px 4px;
-  color: var(--ms-text-secondary, #909399);
+  color: var(--ms-text-secondary);
   font-size: 13px;
 }
 
@@ -220,7 +220,7 @@ watch(
 }
 
 .param-label {
-  color: var(--ms-text-primary, #303133);
+  color: var(--ms-text);
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -229,13 +229,13 @@ watch(
 .param-value {
   font-variant-numeric: tabular-nums;
   font-weight: 600;
-  color: var(--ms-text-primary, #303133);
+  color: var(--ms-text);
   text-align: right;
 }
 
 .param-unit {
   font-size: 12px;
-  color: var(--ms-text-secondary, #909399);
+  color: var(--ms-text-secondary);
   /* 长单位（Vpeak/(m/s)、N/SqRt(W)）宁可挤标签也不能折行：折行会把整行撑高 */
   white-space: nowrap;
   justify-self: end;
@@ -266,7 +266,7 @@ watch(
 .detail-note {
   margin-top: 8px;
   font-size: 12px;
-  color: var(--ms-text-secondary, #909399);
+  color: var(--ms-text-secondary);
   line-height: 1.7;
 }
 
@@ -275,7 +275,7 @@ watch(
   padding-top: 8px;
   border-top: 1px solid var(--ms-border-light, #ebeef5);
   font-size: 12px;
-  color: var(--ms-text-secondary, #909399);
+  color: var(--ms-text-secondary);
   line-height: 1.7;
 }
 </style>

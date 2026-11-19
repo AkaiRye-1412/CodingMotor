@@ -14,8 +14,8 @@ import brandLogo from '@/assets/akribis-logo.png'
 const project = useProjectStore()
 
 const tabs: Array<{ kind: AxisKind; label: string }> = [
-  { kind: 'linear', label: '直线马达' },
-  { kind: 'rotary', label: '旋转马达' },
+  { kind: 'linear', label: '直线电机' },
+  { kind: 'rotary', label: '旋转电机' },
 ]
 
 const entryVisible = ref(false)
