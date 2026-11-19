@@ -46,6 +46,8 @@ public class CatalogParser {
     private static final Logger log = LoggerFactory.getLogger(CatalogParser.class);
 
     private static final Pattern FOOTNOTE_NO = Pattern.compile("\\d{1,2}");
+    /** 纯数值 run：用来区分「跟在正文后的脚注号」与「挨在一起的两个参数值」。 */
+    private static final Pattern PURE_NUMBER = Pattern.compile("[-+]?\\d+(?:\\.\\d+)?");
     private static final Pattern NOTE_NO = Pattern.compile("[1-9]");
     private static final Pattern ENGLISH_NOTE_START = Pattern.compile("^\\d\\.[A-Za-z].*");
     /** 行首脚注编号：单个非零数字，后面紧跟中文或整行只有数字（样册把编号与正文画在同一条基线上）。 */
@@ -86,6 +88,8 @@ public class CatalogParser {
             List<Integer> ocrPages = new ArrayList<>();
             // 分节 → 数据行数（含被丢弃的分节，用于「识别报告」里说明过滤掉多少）
             Map<String, Integer> sectionRows = new LinkedHashMap<>();
+            // 采集口径下被剔除的参数 → 行数（如「最高线圈温度」），同样进识别报告
+            Map<String, Integer> excludedParams = new LinkedHashMap<>();
             // 图片占比达标的页：留给「整本一张表都没有」时的兜底 OCR
             List<Integer> candidates = new ArrayList<>();
             int chars = 0;
@@ -98,7 +102,7 @@ public class CatalogParser {
                 boolean ocrPage = false;
 
                 int got = parseTablesInPage(pno, scan.runs(), scan.bands(), false,
-                        tables, notes, sectionRows);
+                        tables, notes, sectionRows, excludedParams);
                 // 文字层里没有表，但这页看着就是「参数表被贴成了图片」：渲染成图跑一次 OCR，
                 // 把识别结果当成普通文字行重跑同一套版面逻辑（列边界、分节、脚注都不变）。
                 if (got == 0 && ocrPagesUsed < LayoutRules.OCR_MAX_PAGES && isImageSpecPage(scan)) {
@@ -106,7 +110,7 @@ public class CatalogParser {
                     if (!ocr.isEmpty()) {
                         ocrPagesUsed++;
                         int fromOcr = parseTablesInPage(pno, ocr, scan.bands(), true,
-                                tables, notes, sectionRows);
+                                tables, notes, sectionRows, excludedParams);
                         if (fromOcr > 0) {
                             got = fromOcr;
                             ocrPage = true;
@@ -139,7 +143,8 @@ public class CatalogParser {
                     }
                     ocrPagesUsed++;
                     List<FillBand> bands = scanner.scan(doc, pno).bands();
-                    if (parseTablesInPage(pno, ocr, bands, true, tables, notes, sectionRows) > 0) {
+                    if (parseTablesInPage(pno, ocr, bands, true,
+                            tables, notes, sectionRows, excludedParams) > 0) {
                         ocrPages.add(pno);
                         skipped.remove(Integer.valueOf(pno));
                         imageTablePages.remove(Integer.valueOf(pno));
@@ -150,7 +155,7 @@ public class CatalogParser {
             // 有文字层的判据：整本字符量够多，或至少解析出了参数表（单页短样册字符数可能很少）
             boolean hasText = chars > 500 || !tables.isEmpty();
             return new ParsedCatalog(pdf.toString(), pageCount, chars, hasText,
-                    tables, notes, skipped, imageTablePages, ocrPages, sectionRows);
+                    tables, notes, skipped, imageTablePages, ocrPages, sectionRows, excludedParams);
         }
     }
 
@@ -162,7 +167,8 @@ public class CatalogParser {
      */
     private int parseTablesInPage(int pno, List<TextRun> runs, List<FillBand> bands, boolean ocrMode,
                                   List<CatalogTable> tables, Map<Integer, String> notes,
-                                  Map<String, Integer> sectionRows) {
+                                  Map<String, Integer> sectionRows,
+                                  Map<String, Integer> excludedParams) {
         List<TextLine> probe = groupLines(withinX(runs, Double.MAX_VALUE));
         List<Integer> hs = headersIn(probe);
         if (hs.isEmpty()) {
@@ -216,6 +222,8 @@ public class CatalogParser {
             // 分节过滤放在所有行合并之后：这样报告里的「分节明细/丢弃行数」与
             // 「参数行数」口径一致（都是合并后的行数），不会出现两边加起来对不上的情况。
             rows = keepWantedSections(rows, sectionRows);
+            // 再按采集口径剔除个别参数（如最高线圈温度）：用户只需要选型用得上的项
+            rows = dropExcludedParameters(rows, excludedParams);
             if (rows.stream().allMatch(r -> r.values.isEmpty())) {
                 continue;
             }
@@ -809,7 +817,7 @@ public class CatalogParser {
             }
             Map<String, CellText> rendered = new LinkedHashMap<>();
             for (Map.Entry<String, List<TextRun>> e : cells.entrySet()) {
-                rendered.put(e.getKey(), joinCell(e.getValue()));
+                rendered.put(e.getKey(), joinCell(e.getKey(), e.getValue()));
             }
 
             TableRow row = new TableRow();
@@ -840,8 +848,14 @@ public class CatalogParser {
         return c == null ? "" : c.text();
     }
 
-    /** 单元格内多行文字用「；」连接，小字号纯数字抽成脚注编号。 */
-    CellText joinCell(List<TextRun> spans) {
+    /**
+     * 单元格内多行文字用「；」连接，小字号纯数字抽成脚注编号。
+     *
+     * @param key 列键（{@code name}/{@code sym}/{@code unit}/{@code v0}…）：<b>符号列不抽脚注</b>，
+     *            因为符号的下标和脚注号长得一样（见方法内的注释）
+     */
+    CellText joinCell(String key, List<TextRun> spans) {
+        boolean symColumn = "sym".equals(key);
         List<TextRun> sorted = new ArrayList<>(spans);
         sorted.sort(Comparator.comparingDouble(TextRun::oy));
 
@@ -862,13 +876,38 @@ public class CatalogParser {
         for (List<TextRun> line : rows) {
             line.sort(Comparator.comparingDouble(TextRun::x0));
             StringBuilder buf = new StringBuilder();
+            // 脚注号的第二个必要条件：**紧贴在前一段正文后面**。
+            // 只按「小字号 + 1~2 位数字」判，会把同样小字号的参数值一起吞掉：
+            // AUM3 的参数表用 5pt 排数值，{@code 持续推力 28N}、{@code 电磁周期 60}、
+            // {@code 磁吸力 0} 都被当成脚注编号抽进 footnote，值列变空，入库还报
+            // 「缺少必填参数：持续推力」。数值单元格只有它自己一个 run（prev = null），
+            // 因此永远不会被误判；真脚注号（{@code @100°C} 后面跟的 {@code 1}）间距约 1pt。
+            TextRun prevAny = null;
+            TextRun prevBody = null;
+            boolean prevWasFoot = false;
             for (TextRun s : line) {
-                if (s.size() <= LayoutRules.FOOTNOTE_MAX_SIZE
-                        && FOOTNOTE_NO.matcher(s.token()).matches()) {
+                boolean pure = PURE_NUMBER.matcher(s.token()).matches();
+                boolean adjacent = prevAny != null
+                        && s.x0() - prevAny.x1() <= LayoutRules.FOOTNOTE_ATTACH_GAP;
+                // 前一段是正文（含字母/中文）才算脚注号的起点；连续两个编号（`1 4`）也允许，
+                // 但不能是「两个数值挨在一起」—— 那种情况是参数值，不是脚注。
+                boolean afterBody = prevBody != null && !PURE_NUMBER.matcher(prevBody.token()).matches();
+                // 符号列不抽脚注号：`R25` 的 `25` 与真脚注号同为「小字号纯数字 + 紧贴」，
+                // 唯一稳定的差别是<b>列</b>——脚注号跟在参数名后面（名字列），下标长在符号里面。
+                // 不区分开，符号就只剩 `R`，入库时报「缺少必填参数：相间电阻」（ADR050-T-014）。
+                boolean foot = !symColumn
+                        && adjacent
+                        && s.size() <= LayoutRules.FOOTNOTE_MAX_SIZE
+                        && FOOTNOTE_NO.matcher(s.token()).matches()
+                        && (prevWasFoot || afterBody);
+                if (foot) {
                     marks.append(s.token());
                 } else {
                     buf.append(s.text());
+                    prevBody = s;
                 }
+                prevAny = s;
+                prevWasFoot = foot;
             }
             String t = buf.toString().strip();
             if (!t.isEmpty()) {
@@ -1098,8 +1137,8 @@ public class CatalogParser {
         return out;
     }
 
-    /** 值是否形同虚设：空，或整串只有横线/斜线类字符。 */
-    private static boolean isBlankValue(String value) {
+    /** 值是否形同虚设：空，或整串只有横线/斜线类字符（{@code -}、{@code —}、{@code /}）。 */
+    static boolean isBlankValue(String value) {
         if (value == null || value.isBlank()) {
             return true;
         }
@@ -1175,6 +1214,28 @@ public class CatalogParser {
             if (keep) {
                 out.add(r);
             }
+        }
+        return out;
+    }
+
+    /**
+     * 按采集口径剔除个别参数行（2026-11-19 用户裁定：「最高线圈温度」不采集）。
+     *
+     * <p>与分节过滤分开两步：分节白名单决定「哪些分节要」，这一步决定「保留的分节里
+     * 哪些项不要」。判定规则集中在 {@link LayoutRules#isExcludedParameter}，这里只负责
+     * 删行并把「参数名 → 删了几行」记进 {@code excluded}，供识别报告追溯。
+     */
+    List<TableRow> dropExcludedParameters(List<TableRow> rows, Map<String, Integer> excluded) {
+        List<TableRow> out = new ArrayList<>();
+        for (TableRow r : rows) {
+            if (!r.isSection() && LayoutRules.isExcludedParameter(r.name, r.sym)) {
+                String key = r.name == null || r.name.isBlank() ? NAMELESS : r.name.strip();
+                if (excluded != null) {
+                    excluded.merge(key, 1, Integer::sum);
+                }
+                continue;
+            }
+            out.add(r);
         }
         return out;
     }
@@ -1370,11 +1431,11 @@ public class CatalogParser {
         return n;
     }
 
-    /** 去重保序的型号列表（写 Excel 分页用）。 */
+    /** 去重保序的输出型号列表（写 Excel 分页用；冷却变体算独立型号，带 -A / -W 后缀）。 */
     static List<String> distinctModels(List<CatalogTable> tables) {
         LinkedHashSet<String> set = new LinkedHashSet<>();
         for (CatalogTable t : tables) {
-            set.add(t.model());
+            set.add(t.outputModel());
         }
         return List.copyOf(set);
     }

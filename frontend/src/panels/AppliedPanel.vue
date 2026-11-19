@@ -24,6 +24,19 @@ const currentConstantName = computed(() =>
   project.axisKind === 'linear' ? '力常数 Kf' : '转矩常数 Kt',
 )
 
+/** 热校核缺的电机参数（后端逐项给出：R25 / Kth / Kf·Kt / Tmax）。 */
+const thermalMissing = computed(() => applied.value?.thermalMissing ?? [])
+
+/**
+ * 结论行的补充说明：温度能算出来、但缺 tMax 无法判定超温时才显示，
+ * 避免与「线圈温度」行里的缺项提示重复。
+ */
+const thermalHint = computed(() =>
+  applied.value?.coilTemp != null && thermalMissing.value.length
+    ? `缺 ${thermalMissing.value.join(' / ')}，无法判定是否超温`
+    : '',
+)
+
 const verdictText = computed(() => {
   switch (applied.value?.thermalVerdict) {
     case 'pass':
@@ -62,7 +75,11 @@ const rows = computed<AppliedRow[]>(() => {
       label: '线圈温度',
       value: a?.coilTemp,
       unit: '°C',
-      missing: a?.coilTemp == null ? '缺 热耗散常数 Kth' : '',
+      // 提示语以前写死成「缺 热耗散常数 Kth」，实际常常缺的是别的项 → 改成后端逐项列出缺什么
+      missing:
+        a?.coilTemp == null
+          ? `缺 ${(thermalMissing.value.length ? thermalMissing.value : ['热耗散常数 Kth']).join(' / ')}`
+          : '',
     },
     {
       label: '连续电流',
@@ -114,6 +131,7 @@ const rows = computed<AppliedRow[]>(() => {
     <template v-else>
       <div class="verdict-line">
         <span :class="verdictClass">{{ verdictText }}</span>
+        <span v-if="thermalHint" class="muted-note">{{ thermalHint }}</span>
         <span v-if="applied?.overBusVoltage" class="verdict fail">
           需求电压 &gt; 电机 Ubus 耐压
         </span>

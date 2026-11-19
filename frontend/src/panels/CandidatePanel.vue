@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import { useCalculation } from '@/composables/useCalculation'
 import { useMotorStore } from '@/stores/motor'
 import { useProjectStore } from '@/stores/project'
-import { useSettingStore } from '@/stores/setting'
+import { COOLING_OPTIONS, useSettingStore } from '@/stores/setting'
 import type { MotorTypeCode } from '@/types/domain'
 import { formatPercent } from '@/utils/format'
 
@@ -38,6 +38,13 @@ const candidates = computed(() => {
 
 const isActive = (value: string): boolean => setting.filterStructures.includes(value)
 
+/**
+ * 第 69 轮：「结构」（冷却方式）筛选。
+ * 判据在后端 `MotorCooling`：型号结尾 -A/-W 优先，其次库里冷却字段，最后按型号中间段兜底，
+ * 所以 `RDM020-A-B2`（-A- 是结构代号）不会被算成气冷。
+ */
+const isCoolingActive = (value: string): boolean => setting.filterCoolings.includes(value)
+
 const typeLabel = (type: string): string => {
   const templates = motorStore.templates
   if (!templates) return type
@@ -69,6 +76,21 @@ function selectCandidate(motorId: number): void {
           size="small"
           class="filter-chip"
           @click="setting.toggleFilter(value)"
+        >
+          {{ value }}
+        </el-tag>
+      </div>
+
+      <div class="filter-group">
+        <span class="filter-title">结构</span>
+        <el-tag
+          v-for="value in COOLING_OPTIONS"
+          :key="value"
+          :type="isCoolingActive(value) ? 'primary' : 'info'"
+          :effect="isCoolingActive(value) ? 'dark' : 'plain'"
+          size="small"
+          class="filter-chip"
+          @click="setting.toggleCooling(value)"
         >
           {{ value }}
         </el-tag>

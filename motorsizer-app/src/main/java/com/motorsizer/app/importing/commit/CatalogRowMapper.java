@@ -1,5 +1,7 @@
 package com.motorsizer.app.importing.commit;
 
+import com.motorsizer.app.importing.render.CoolingVariants;
+import com.motorsizer.app.service.MotorCooling;
 import com.motorsizer.domain.catalog.MotorCatalogTemplates;
 import com.motorsizer.domain.catalog.MotorField;
 import com.motorsizer.domain.catalog.MotorType;
@@ -49,6 +51,9 @@ public class CatalogRowMapper {
 
     private static final Pattern NUMBER = Pattern.compile("-?\\d+(?:\\.\\d+)?(?:[Ee][+-]?\\d+)?");
 
+    /** 纯 ASCII（含数字与下划线）：短别名撞词中段的误判只对这种写法发生。 */
+    private static final Pattern ASCII = Pattern.compile("[\\x20-\\x7e]+");
+
     /** 未带接法的型号（以及全部型号，见 {@link #keyOf}）用的配置名。 */
     private static final String CONFIG_DEFAULT = "默认";
 
@@ -90,6 +95,14 @@ public class CatalogRowMapper {
             spec.put(field.key(), value.multiply(scaleOf(field, row.unit())));
         }
 
+        // 最高线圈温度：采集口径里剔掉了这一行，但热校核（允许电流 / 是否超温）必须有它，
+        // 用户裁定「都按默认 100 °C」。这里补值而不是留空，这样电机库、报告、界面看到的是同一个数。
+        if (!spec.containsKey("tMax")) {
+            spec.put("tMax", BigDecimal.valueOf(MotorCatalogTemplates.DEFAULT_MAX_COIL_TEMP));
+            notes.add("样册未提供最高线圈温度，按默认 "
+                    + (int) MotorCatalogTemplates.DEFAULT_MAX_COIL_TEMP + " °C 入库（热校核用）");
+        }
+
         List<String> missing = template.requiredKeys().stream()
                 .filter(key -> !spec.containsKey(key))
                 .map(key -> labelOf(template, key))
@@ -103,8 +116,37 @@ public class CatalogRowMapper {
         return new MappedMotor(
                 key[0], key[1], type,
                 template.structures().isEmpty() ? "" : template.structures().get(0),
-                template.coolings().isEmpty() ? "" : template.coolings().get(0),
+                coolingOf(template, key[0], rows),
                 spec, missing, notes);
+    }
+
+    /**
+     * 冷却方式：**样册证据优先，型号结尾后缀兜底**，都没有才是模板首项（普通 = 自冷）。
+     *
+     * <ol>
+     *   <li><b>样册证据</b>：该型号的数据行里写着「水冷」/「气冷」/「(WC)」/「(AC)」
+     *       → 直接定（{@link CoolingVariants#coolingLabel}）。参数行是被冷却方式标注过的，
+     *       比型号名更贴近数据本身；</li>
+     *   <li><b>型号结尾</b> {@code -A} / {@code -W}（{@link MotorCooling#bySuffix}）——
+     *       AKM/AKH 的水冷表参数名写的是英文 {@code (WC)}，中文词表抓不到时靠这条；
+     *       只看结尾、<b>不看中间段</b>，因为 {@code AKM200-A-B4} 的 {@code -A-} 是结构代号；</li>
+     *   <li>都没有 → 模板首项（直线/力矩是「普通」，音圈只有「普通」）。</li>
+     * </ol>
+     *
+     * <p>模板里没有该选项时（音圈只有「普通」）一律退回首项，绝不写一个非法值
+     * ——库表有 CHECK 约束 {@code CK_MOTOR_COOLING}。
+     */
+    private static String coolingOf(MotorTypeTemplate template, String model,
+                                    List<CatalogSummarySheet.SheetRow> rows) {
+        String label = CoolingVariants.coolingLabel(
+                rows.stream().map(CatalogSummarySheet.SheetRow::name).toList());
+        if (label == null) {
+            label = MotorCooling.bySuffix(model);
+        }
+        if (label != null && template.allowsCooling(label)) {
+            return label;
+        }
+        return template.coolings().isEmpty() ? "" : template.coolings().get(0);
     }
 
     // ---------------------------------------------------------------- 类型
@@ -146,8 +188,40 @@ public class CatalogRowMapper {
                 // 力矩的「最高转速 @峰值转矩 / @持续转矩」都写作 Ωmax，只能靠参数名区分
                 return pickByName(bySymbol, row.name());
             }
+            MotorField byCoolingSymbol = byCoolingSuffixSymbol(fields, symbol);
+            if (byCoolingSymbol != null) {
+                return byCoolingSymbol;
+            }
         }
         return pickByName(fields, row.name());
+    }
+
+    /**
+     * 带冷却尾字母的符号：{@code Kthw} / {@code Icw} / {@code Pcw}（水冷）、{@code Ktha} / {@code Ica} / {@code Pca}（气冷）。
+     *
+     * <p>样册（AKM 系列英文图纸）把同一字段按冷却方式加一个尾字母，模板里的符号不带后缀：
+     * {@code Kthw} 对不上 {@code Kth}，于是「热耗散常数」整行丢弃 → 该型号缺必填、整台跳过
+     * （2026-11-19 用户反馈 `AKM200-A-B4-W-B` 只缺热耗散常数）。
+     *
+     * <p>判定很简单：行符号以 {@code w}/{@code a} 收尾时，去掉它先按原样比（{@code Kthw → Kth}），
+     * 再补自冷形式的收尾 {@code n}（{@code Icw → Ic → Icn}、{@code Pcw → Pc → Pcn}）。
+     * 长度不足 3 或尾字母不是 {@code w}/{@code a} 的直接放弃，避免把 {@code Tmax} 这类正常符号拆坏。
+     */
+    private MotorField byCoolingSuffixSymbol(List<MotorField> fields, String symbol) {
+        char tail = symbol.charAt(symbol.length() - 1);
+        if (symbol.length() < 3 || (tail != 'W' && tail != 'A')) {
+            return null;
+        }
+        String stem = symbol.substring(0, symbol.length() - 1);
+        for (String candidate : List.of(stem, stem + "N")) {
+            List<MotorField> hits = fields.stream()
+                    .filter(field -> normSymbol(field.symbol()).equals(candidate))
+                    .toList();
+            if (hits.size() == 1) {
+                return hits.get(0);
+            }
+        }
+        return null;
     }
 
     /**
@@ -202,11 +276,47 @@ public class CatalogRowMapper {
             if (text.length() < 2 || normalizedName.length() < 2) {
                 continue;
             }
-            if (text.contains(normalizedName) || normalizedName.contains(text)) {
+            if (containsLoose(text, normalizedName) || containsLoose(normalizedName, text)) {
                 return true;
             }
         }
         return false;
+    }
+
+    /**
+     * 包含匹配：长别名按子串算，<b>短 ASCII 别名必须落在词边界上</b>。
+     *
+     * <p>踩过的坑（AKM200 水冷表）：{@code Ip} 是 {@code dissi<b>p</b>ation} 的子串，
+     * {@code Ic} 是 {@code magnet<b>ic</b> period} 的子串。于是「Thermal Dissipation Constant」
+     * 同时命中 {@code kth} 和 {@code iPeak}、「Magnetic Period」同时命中 {@code polePitch} 和
+     * {@code iCont}，{@link #unique} 见多候选就返回 {@code null}（宁可跳过不猜），
+     * 两个参数整行丢失 —— 表现为「这台水冷电机只缺热耗散常数、还多缺电磁周期」。
+     *
+     * <p>长度 ≥ 4 的别名仍按子串处理：{@code thermal dissipation} 命中
+     * {@code thermal dissipation constant} 是正常的长名包含，拦掉反而会丢字段。
+     */
+    private static boolean containsLoose(String haystack, String needle) {
+        if (needle.length() >= 4 || !ASCII.matcher(needle).matches()) {
+            return haystack.contains(needle);
+        }
+        int from = 0;
+        while (true) {
+            int at = haystack.indexOf(needle, from);
+            if (at < 0) {
+                return false;
+            }
+            int end = at + needle.length();
+            boolean leftFree = at == 0 || !isAsciiWord(haystack.charAt(at - 1));
+            boolean rightFree = end == haystack.length() || !isAsciiWord(haystack.charAt(end));
+            if (leftFree && rightFree) {
+                return true;
+            }
+            from = at + 1;
+        }
+    }
+
+    private static boolean isAsciiWord(char c) {
+        return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');
     }
 
     private List<String> namesOf(MotorField field) {

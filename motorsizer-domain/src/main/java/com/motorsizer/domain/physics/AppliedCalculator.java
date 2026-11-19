@@ -1,5 +1,6 @@
 package com.motorsizer.domain.physics;
 
+import com.motorsizer.domain.catalog.MotorCatalogTemplates;
 import com.motorsizer.domain.model.AppliedEnvironment;
 import com.motorsizer.domain.model.AppliedResult;
 import com.motorsizer.domain.model.AxisKind;
@@ -62,8 +63,27 @@ public final class AppliedCalculator {
         Double iPeakMax = isFinite(iPeakRms) ? iPeakRms * SQRT_2 : null;
 
         Double tMax = motor.value("tMax");
+        if (!isFinite(tMax)) {
+            // 样册采集口径里没有「最高线圈温度」这一行 → 缺省按 100 °C 校核（用户裁定）。
+            // 手工录入时表单必填，走到这里的大多是样册入库的电机，或口径确定之前入库的老数据。
+            tMax = MotorCatalogTemplates.DEFAULT_MAX_COIL_TEMP;
+        }
         Double r25 = motor.value("r25");
         Double kth = motor.value("kth");
+
+        // 热校核缺什么，逐项说清楚（前端与报告直接拿去显示）。
+        // 原来的提示语是写死的「缺 热耗散常数 Kth」，可样册入库的电机往往缺的是别的项，
+        // 用户照着提示去补永远补不对。tMax 已有缺省值，不再列入。
+        List<String> thermalMissing = new ArrayList<>();
+        if (!isFinite(r25)) {
+            thermalMissing.add("相间电阻 R25");
+        }
+        if (!isFinite(kth)) {
+            thermalMissing.add("热耗散常数 Kth");
+        }
+        if (!isFinite(unitCurrent)) {
+            thermalMissing.add(kind == AxisKind.LINEAR ? "力常数 Kf" : "转矩常数 Kt");
+        }
 
         Double rHot = isFinite(r25) && isFinite(tMax)
                 ? r25 * (1 + ALPHA_CU * (tMax - 25))
@@ -75,7 +95,10 @@ public final class AppliedCalculator {
         }
 
         Double tCoil = null;
-        if (isFinite(rHot) && isFinite(kth) && isFinite(iContRms)) {
+        // 线圈温度只用 r25 / kth / 实际电流就能迭代出来，**不需要 tMax**——
+        // tMax 只用于「允许电流 iAllow」与超温判定。原守卫把 rHot（依赖 tMax）也带进来，
+        // 结果样册入库的电机（tMax 未采集）连温度都显示成「—」，还错误地报「缺热耗散常数」。
+        if (isFinite(r25) && isFinite(kth) && isFinite(iContRms)) {
             double temp = ambientTemp + 1.5 * iContRms * iContRms * r25 / kth;
             temp = ambientTemp
                     + 1.5 * iContRms * iContRms * (r25 * (1 + ALPHA_CU * (temp - 25))) / kth;
@@ -170,6 +193,7 @@ public final class AppliedCalculator {
                 uAtCruise,
                 rVolt,
                 uMissing,
+                thermalMissing,
                 safety,
                 loadCont,
                 loadPeak,

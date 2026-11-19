@@ -6,6 +6,7 @@ import { useProjectStore } from '@/stores/project'
 import { clearAllMotors } from '@/api/motor'
 import type { AxisKind } from '@/types/domain'
 import MotorEntryDialog from '@/dialogs/MotorEntryDialog.vue'
+import ImportDialog from '@/dialogs/ImportDialog.vue'
 import ReportDialog from '@/dialogs/ReportDialog.vue'
 import brandLogo from '@/assets/akribis-logo.png'
 
@@ -18,8 +19,18 @@ const tabs: Array<{ kind: AxisKind; label: string }> = [
 ]
 
 const entryVisible = ref(false)
+const importVisible = ref(false)
 const reportVisible = ref(false)
 const clearing = ref(false)
+
+/**
+ * 「导入电机参数」弹窗里的通道 2 交给顶层打开样册弹窗：
+ * 这样两个弹窗互不嵌套（补全参数时还要从样册弹窗里反向打开录入表单，嵌套会绕成循环引用）。
+ */
+function openImport(): void {
+  entryVisible.value = false
+  importVisible.value = true
+}
 
 /** 清空数据库：二次确认后才执行，成功后刷新页面回到干净状态。 */
 async function confirmClearAll() {
@@ -106,6 +117,7 @@ async function confirmClearAll() {
     </div>
   </header>
 
-  <MotorEntryDialog v-model="entryVisible" />
+  <MotorEntryDialog v-model="entryVisible" @open-import="openImport" />
+  <ImportDialog v-model="importVisible" />
   <ReportDialog v-model="reportVisible" />
 </template>

@@ -229,7 +229,9 @@ public class CalculationService {
 
         boolean excludedByFilter =
                 excludedByStructureFilter(input, motor)
-                        || (!input.coolings().isEmpty() && !input.coolings().contains(motor.cooling()));
+                        || (!input.coolings().isEmpty()
+                                && !input.coolings().contains(
+                                        MotorCooling.of(motor.modelName(), motor.cooling())));
         if (excludedByFilter) {
             return "被当前结构/冷却筛选排除";
         }
@@ -285,7 +287,7 @@ public class CalculationService {
                 derived = true;
             }
             rows.add(new CalculationResponse.MotorParameter(
-                    field.key(), field.label(), field.unit(), value, derived));
+                    field.key(), coolLabel(field.label(), motor.cooling()), field.unit(), value, derived));
         }
 
         rows.add(new CalculationResponse.MotorParameter(
@@ -298,6 +300,20 @@ public class CalculationService {
                 motor.derived().pmax() != null));
 
         return rows;
+    }
+
+    /**
+     * 模板 label 里的 {@code {cool}} 占位符落成这台电机的冷却方式。
+     *
+     * <p>「普通」在界面与报告里写作「自冷」（样册用词，与录入表单 {@code COOL_LABEL} 同一口径）。
+     * 不落地的话 M8 参数表会直接露出 {@code {cool}} 字样。
+     */
+    private static String coolLabel(String label, String cooling) {
+        if (label == null || !label.contains("{cool}")) {
+            return label;
+        }
+        String word = cooling == null || cooling.isBlank() ? "自冷" : cooling.trim();
+        return label.replace("{cool}", "普通".equals(word) ? "自冷" : word);
     }
 
     // ---------------------------------------------------------------- 响应映射
@@ -345,7 +361,8 @@ public class CalculationService {
                 applied.verdict().code(),
                 applied.overUbus(),
                 supplyDto(applied.supply()),
-                applied.uMissing());
+                applied.uMissing(),
+                applied.thermalMissing());
     }
 
     private CalculationResponse.Supply supplyDto(SupplyVerdict supply) {

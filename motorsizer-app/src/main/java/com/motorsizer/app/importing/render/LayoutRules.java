@@ -33,6 +33,16 @@ public final class LayoutRules {
     /** 脚注上标字号上限：小于它的纯数字视为脚注编号。 */
     public static final double FOOTNOTE_MAX_SIZE = 4.3;
 
+    /**
+     * 脚注编号与正文的最大间距：编号必须**紧贴在前一段文字后面**才算脚注。
+     *
+     * <p>只按「小字号 + 1~2 位数字」判会把参数值一并吞掉：AUM3 的参数表用 5pt 排数值，
+     * 而尺子一量它和脚注号一样小 —— 于是 {@code 持续推力 28N}、{@code 电磁周期 60}、
+     * {@code 磁吸力 0} 全被当成脚注编号抽进 footnote 字段，值列变空，
+     * 入库时还报「缺少必填参数：持续推力」。样册的脚注号与正文间距约 1pt。
+     */
+    public static final double FOOTNOTE_ATTACH_GAP = 3.0;
+
     /** 型号名形态（AXD120-71 / DD-30 / AQM30-3.4 等）。 */
     public static final Pattern MODEL_PATTERN =
             Pattern.compile("^[A-Z]{2,6}\\d{1,4}[A-Za-z]?(?:[-/][A-Za-z0-9.]+)*$");
@@ -108,6 +118,60 @@ public final class LayoutRules {
      */
     public static final Set<String> KEEP_SECTIONS = Set.of(
             "性能参数", "Performance Parameters", "Performance Parameter");
+
+    /**
+     * 采集口径下不采集的参数符号（2026-11-19 用户裁定：不需要「最高线圈温度」）。
+     *
+     * <p>符号按「只留字母数字、转小写」后比较，样册里的 {@code Tmax} / {@code tmax} /
+     * {@code T max} 都归一到 {@code tmax}。
+     */
+    public static final Set<String> EXCLUDED_PARAM_SYMBOLS = Set.of("tmax");
+
+    /**
+     * 采集口径下不采集的参数名关键词（同样先做「只留字母数字/汉字、转小写」再匹配）。
+     *
+     * <p>符号列不总是可读（OCR 会把 {@code tmax} 读成 {@code tmax}/{@code 1max}），
+     * 中文样册与英文图纸的参数名写法也不同，所以符号与名字双路判断：
+     * 名字里带「线圈温度」「绕组温度」或 {@code coil temp} / {@code winding temp} 即排除。
+     */
+    public static final Set<String> EXCLUDED_PARAM_WORDS =
+            Set.of("线圈温度", "绕组温度", "coiltemp", "windingtemp");
+
+    /** 报告与提示语里的人话描述（与上面的名单同源，改名单时同步改这一句）。 */
+    public static final String EXCLUDED_PARAM_DESC = "最高线圈温度（符号 Tmax）";
+
+    /** 该参数行是否不采集（按名字与符号判断，任一命中即排除）。 */
+    public static boolean isExcludedParameter(String name, String symbol) {
+        String sym = keyword(symbol);
+        if (!sym.isEmpty() && EXCLUDED_PARAM_SYMBOLS.contains(sym)) {
+            return true;
+        }
+        String key = keyword(name);
+        if (key.isEmpty()) {
+            return false;
+        }
+        for (String word : EXCLUDED_PARAM_WORDS) {
+            if (key.contains(word)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** 比较用的归一形态：只留字母、数字与汉字，转小写（去掉空格、点、括号、上下标等）。 */
+    static String keyword(String text) {
+        if (text == null) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder(text.length());
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (Character.isLetterOrDigit(c) || (c >= '\u4e00' && c <= '\u9fff')) {
+                sb.append(Character.toLowerCase(c));
+            }
+        }
+        return sb.toString();
+    }
 
     /**
      * 分节行名形态：用于「没有底色块」的表格（位图 OCR 出来的表）判断某行是分节标题而不是数据行。

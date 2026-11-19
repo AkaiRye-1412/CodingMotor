@@ -12,7 +12,11 @@ import {
   listImportJobs,
 } from '@/api/import'
 import { ApiError } from '@/types/api'
-import type { CommitStatus, ImportCommitResult, ImportJob, ImportJobSummary } from '@/types/import'
+import type { MotorTypeCode } from '@/types/domain'
+import type { MotorPrefill } from '@/types/motor'
+import type { CommitStatus, ImportCommitItem, ImportCommitResult, ImportJob, ImportJobSummary } from '@/types/import'
+import MotorEntryDialog from '@/dialogs/MotorEntryDialog.vue'
+import MotorDetailDialog from '@/dialogs/MotorDetailDialog.vue'
 
 /**
  * 样册 PDF → Excel → 入库（06 v2）：上传 → 生成并下载 → 入库。
@@ -58,6 +62,11 @@ function reset() {
   job.value = null
   commitResult.value = null
   busy.value = false
+  fixVisible.value = false
+  fixPrefill.value = null
+  fixTarget.value = null
+  detailVisible.value = false
+  detailMotorId.value = null
 }
 
 /**
@@ -112,8 +121,8 @@ async function convert() {
 }
 
 /**
- * 结果页「再次上传」：直接选文件并转换，不必先退回上传页。
- * 与上方步骤条第 1 步（返回）区分开——那个是「回到上一步」，这个是「在原地看着结果再转一份」。
+ * 结果页 / 入库页的「继续上传 PDF」：直接选文件并转换，不必先退回上传页。
+ * 与步骤条第 1 步（返回上传页、清空任务）区分开——这个是在原地接着转下一份样册。
  */
 function pickAnother() {
   if (busy.value) return
@@ -129,6 +138,7 @@ async function onAnotherPicked(event: Event) {
     ElMessage.warning('仅支持 PDF 文件')
     return
   }
+  step.value = 2              // 立刻离开入库页，避免沿用「正在入库」的提示
   await convertFile(file)
 }
 
@@ -207,9 +217,73 @@ async function commit() {
 
 const TYPE_LABEL: Record<string, string> = { linear: '直线', torque: '力矩', coil: '音圈' }
 
-/** 第 3 步 → 第 2 步：回看 Excel 结果，入库结果保留（再点「入库」会重新覆盖一遍）。 */
-function backToResult() {
-  step.value = 2
+// ---------------------------------------------------------------- 查看参数（已入库项）
+
+const detailVisible = ref(false)
+const detailMotorId = ref<number | null>(null)
+
+/** 入库成功（新增 / 覆盖）的电机：打开只读参数页，核对库里到底写进去了什么。 */
+function openDetail(row: ImportCommitItem): void {
+  if (row.motorId == null) return
+  detailMotorId.value = row.motorId
+  detailVisible.value = true
+}
+
+// ---------------------------------------------------------------- 补全参数（跳过项）
+
+const fixVisible = ref(false)
+const fixPrefill = ref<MotorPrefill | null>(null)
+const fixTarget = ref<ImportCommitItem | null>(null)
+
+/**
+ * 被跳过的电机：直接打开录入表单，样册里已认出来的参数全部预填，用户只补缺的那几项。
+ *
+ * <p>来源文档传下去，写库时记成「识别草稿」+ 该 PDF，与批量入库口径一致。
+ */
+function openFix(row: ImportCommitItem): void {
+  fixTarget.value = row
+  fixPrefill.value = {
+    modelName: row.modelName,
+    configName: row.configName,
+    motorType: row.motorType as MotorTypeCode,
+    structure: row.structure,
+    cooling: row.cooling,
+    spec: row.spec ?? {},
+    sourceDoc: commitResult.value?.fileName ?? job.value?.stats.excelName ?? '样册',
+    note: `样册识别入库（补全参数，任务 ${commitResult.value?.jobId ?? job.value?.jobId ?? ''}）`,
+  }
+  fixVisible.value = true
+}
+
+/**
+ * 补全保存成功后：只把这一行就地改成「已入库」。
+ *
+ * <p>不重跑整批入库——那会把用户已经手工改过的同名电机又覆盖回去。
+ * 想按 Excel 整体重写，回上一步点「入库」即可。
+ */
+function onFixed(payload: { motorId: number; status: 'CREATED' | 'UPDATED' }): void {
+  const result = commitResult.value
+  const target = fixTarget.value
+  if (!result || !target) return
+  const index = result.items.findIndex(
+    (item) => item.modelName === target.modelName && item.configName === target.configName,
+  )
+  if (index < 0) return
+  const fixed: ImportCommitItem = {
+    ...result.items[index],
+    status: payload.status,
+    motorId: payload.motorId,
+    message:
+      payload.status === 'UPDATED'
+        ? '补全参数后已整体覆盖电机库同名电机'
+        : '补全参数后已新增到电机库',
+  }
+  result.items.splice(index, 1, fixed)
+  if (result.skipped > 0) result.skipped -= 1
+  if (payload.status === 'CREATED') result.created += 1
+  else result.updated += 1
+  fixTarget.value = null
+  ElMessage.success(`「${fixed.modelName}」已入库`)
 }
 
 function commitLabel(status: CommitStatus): string {
@@ -284,6 +358,9 @@ function statusType(status: string): 'success' | 'warning' | 'danger' {
       </el-steps>
     </div>
 
+    <!-- 结果页 / 入库页共用：选一个新 PDF 直接转换，不必先退回上传页 -->
+    <input ref="fileInput" type="file" accept=".pdf" class="hidden-file" @change="onAnotherPicked" />
+
     <!-- 步骤 1：上传 -->
     <div v-if="step === 1" class="step-body">
       <el-alert
@@ -345,13 +422,6 @@ function statusType(status: string): 'success' | 'warning' | 'danger' {
 
     <!-- 步骤 2：结果 -->
     <div v-else-if="step === 2 && job" class="step-body">
-      <input
-        ref="fileInput"
-        type="file"
-        accept=".pdf"
-        class="hidden-file"
-        @change="onAnotherPicked"
-      />
       <el-alert
         :type="isReady ? 'success' : 'warning'"
         :closable="false"
@@ -410,7 +480,7 @@ function statusType(status: string): 'success' | 'warning' | 'danger' {
 
       <div class="step-actions">
         <el-button class="action-back" :icon="UploadIcon" :loading="busy" @click="pickAnother">
-          再次上传 PDF
+          继续上传 PDF
         </el-button>
         <el-button type="danger" plain :icon="Delete" @click="removeJob(job.jobId)">
           删除任务
@@ -459,21 +529,54 @@ function statusType(status: string): 'success' | 'warning' | 'danger' {
           <el-table-column label="说明" min-width="200" show-overflow-tooltip>
             <template #default="{ row }">{{ row.message }}</template>
           </el-table-column>
+          <el-table-column label="操作" width="110" align="right">
+            <template #default="{ row }">
+              <el-button
+                v-if="row.status === 'SKIPPED' || row.status === 'FAILED'"
+                size="small"
+                type="warning"
+                link
+                @click="openFix(row)"
+              >
+                补全参数
+              </el-button>
+              <el-button
+                v-else-if="row.motorId != null"
+                size="small"
+                type="primary"
+                link
+                @click="openDetail(row)"
+              >
+                查看
+              </el-button>
+            </template>
+          </el-table-column>
         </el-table>
 
         <div class="sheet-note">
           结构与冷却样册一般不给，按模板默认写入（直线 无铁芯/普通、力矩 有铁芯/普通、音圈 音圈/普通），
           可在电机库中按实物修改。入库方式记为「识别草稿」，来源文档即该 PDF。
+          <br />
+          已入库的电机可点该行右侧「<b>查看</b>」核对库里实际写入的参数（只读，含热耗散常数等仅录入可见的项）。
+          被<b>跳过 / 失败</b>的电机可点「补全参数」：样册已识别的值会预填，补齐保存即写入电机库
+          （只写这一台，不会重跑整批）；若要按 Excel 整体重写，点上方「生成并下载 Excel」回看结果再点「入库」。
           计算结果页的候选是上一次计算的快照，<b>重新计算一次</b>才会看到新入库的电机。
         </div>
 
         <div class="step-actions">
-          <el-button class="action-back" :icon="Back" @click="backToResult">返回上一步</el-button>
+          <el-button class="action-back" :icon="UploadIcon" :loading="busy" @click="pickAnother">
+            继续上传 PDF
+          </el-button>
           <el-button :icon="Download" @click="download()">下载 Excel</el-button>
         </div>
       </template>
     </div>
   </el-dialog>
+
+  <!-- 补全参数：复用电机库录入表单，预填样册已识别的值（不进电机库之前不落任何数据） -->
+  <MotorEntryDialog v-model="fixVisible" :prefill="fixPrefill" @saved="onFixed" />
+  <!-- 查看参数：已入库的电机，只读展示库里的当前值 -->
+  <MotorDetailDialog v-model="detailVisible" :motor-id="detailMotorId" />
 </template>
 
 <style scoped>

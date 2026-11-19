@@ -5,6 +5,7 @@ import com.motorsizer.app.common.ErrorCode;
 import com.motorsizer.app.common.FieldError;
 import com.motorsizer.app.importing.render.CatalogParser;
 import com.motorsizer.app.importing.render.CatalogWorkbookWriter;
+import com.motorsizer.app.importing.render.LayoutRules;
 import com.motorsizer.app.importing.render.ParsedCatalog;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -177,10 +178,10 @@ public class ImportService {
                 parsed.imageTablePages(),
                 parsed.ocrPages(),
                 excelNameOf(original),
-                messageOf(parsed));
+                messageOf(parsed, written));
     }
 
-    private String messageOf(ParsedCatalog parsed) {
+    private String messageOf(ParsedCatalog parsed, CatalogWorkbookWriter.Result written) {
         if (parsed.tables().isEmpty()) {
             if (!parsed.imageTablePages().isEmpty()) {
                 return "第 " + pagesText(parsed.imageTablePages())
@@ -201,6 +202,15 @@ public class ImportService {
         }
         if (parsed.droppedRows() > 0) {
             sb.append("；已按分节过滤掉 ").append(parsed.droppedRows()).append(" 行非性能参数");
+        }
+        if (parsed.excludedRows() > 0) {
+            sb.append("；已按采集口径剔除 ").append(parsed.excludedRows())
+                    .append(" 行「").append(LayoutRules.EXCLUDED_PARAM_DESC).append("」");
+        }
+        if (written != null && written.splitModels() > 0) {
+            // 型号数会变多，先说清楚：拆出的 -A / -W 是独立型号，入库也是独立电机
+            sb.append("；已按冷却方式拆分 ").append(written.splitModels())
+                    .append(" 个型号（气冷 -A / 水冷 -W 各成独立型号）");
         }
         if (!parsed.ocrPages().isEmpty()) {
             sb.append("；第 ").append(pagesText(parsed.ocrPages()))

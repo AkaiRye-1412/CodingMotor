@@ -63,6 +63,8 @@ export interface ImportCommitItem {
   status: CommitStatus
   motorId: number | null
   message: string
+  /** 已映射到的参数（K2 字段 key → 内部单位值）；「补全参数」表单据此预填，缺的必填项自然不在其中。 */
+  spec: Record<string, number | null>
 }
 
 /** 一次「入库」的结果汇总。 */

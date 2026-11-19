@@ -140,6 +140,128 @@ class CatalogRowMapperTest {
         assertThat(CatalogRowMapper.keyOf(" AXD120-71-S ")).containsExactly("AXD120-71-S", "默认");
     }
 
+    /**
+     * 按冷却方式拆出的型号：入库时「冷却方式」跟着型号走。
+     *
+     * <p>样册一款电机按冷却方式拆成 {@code -A} / {@code -W} 之后，三台电机若都写「普通」，
+     * 电机库里就分不出谁能水冷；自冷/未标注仍是模板默认的「普通」。
+     */
+    @Test
+    void fillsCoolingFromCoolingVariants() {
+        List<CatalogRowMapper.MappedMotor> motors = mapper.map(List.of(
+                row("AUM4-S1-S", "性能参数", "持续电流（自冷）@100℃", "Icn", "Arms", "2.3"),
+                row("AUM4-S1-S-A", "性能参数", "持续电流（气冷）@100℃", "Ica", "Arms", "2.8"),
+                row("AUM4-S1-S-W", "性能参数", "持续电流（水冷）@100℃", "Icw", "Arms", "3.0")));
+
+        assertThat(motors).extracting(CatalogRowMapper.MappedMotor::modelName)
+                .containsExactly("AUM4-S1-S", "AUM4-S1-S-A", "AUM4-S1-S-W");
+        assertThat(motors).extracting(CatalogRowMapper.MappedMotor::cooling)
+                .containsExactly("普通", "气冷", "水冷");
+    }
+
+    /**
+     * 样册不采「最高线圈温度」：入库补默认 100 °C，并在 notes 里留痕。
+     *
+     * <p>采集口径剔掉了这一行，可热校核（允许电流 / 是否超温）离不开它；用户裁定按默认 100 °C。
+     * 补值而不是留空——否则电机库、报告、界面三个地方看到的数不一样。
+     */
+    @Test
+    void fillsDefaultMaxCoilTempWhenCatalogOmitsIt() {
+        List<CatalogSummarySheet.SheetRow> rows = List.of(
+                row("AUM4-S1-S", "性能参数", "持续推力（自冷）@100℃", "Fcn", "N", "55"),
+                row("AUM4-S1-S", "性能参数", "峰值推力", "Fpk", "N", "165"),
+                row("AUM4-S1-S", "性能参数", "力常数 ±10%", "Kf", "N/Arms", "23.9"),
+                row("AUM4-S1-S", "性能参数", "反电势常数 ±10%", "Ke", "Vpeak/(m/s)", "20.4"),
+                row("AUM4-S1-S", "性能参数", "相间电阻 @25℃ ±10%", "R25", "Ω", "24"),
+                row("AUM4-S1-S", "性能参数", "持续电流（自冷）@100℃", "Icn", "Arms", "2.3"),
+                row("AUM4-S1-S", "性能参数", "峰值电流", "Ipk", "Arms", "13.0"),
+                row("AUM4-S1-S", "性能参数", "热耗散常数（自冷）", "Kth", "W/℃", "0.55"),
+                row("AUM4-S1-S", "性能参数", "最高母线电压", "Ubus", "Vdc", "330/600"));
+
+        CatalogRowMapper.MappedMotor motor = mapper.map(rows).get(0);
+
+        assertThat(motor.spec().get("tMax")).isEqualByComparingTo("100");
+        assertThat(motor.notes()).anyMatch(note -> note.contains("最高线圈温度") && note.contains("100"));
+    }
+
+    /**
+     * 水冷表（英文图纸，符号带 {@code w} 尾字母）：热耗散常数等照样要认出来。
+     *
+     * <p>AKM200 的真实现象：{@code Kthw} 对不上模板里的 {@code Kth}，整行丢弃 →
+     * 「缺少必填参数：热耗散常数」→ 一台明明参数齐全的水冷电机被跳过。同一张表里
+     * {@code Thermal Dissipation Constant} 还被 {@code Ip}（⊂ dissi<b>p</b>ation）撞成
+     * 「{@code kth} / {@code iPeak} 二选一不确定」，{@code Magnetic Period} 被
+     * {@code Ic}（⊂ magnet<b>ic</b>）撞成持续电流——三个字段一起丢。
+     */
+    @Test
+    void mapsWaterCooledTableWithCoolingSuffixedSymbols() {
+        String model = "AKM200-A-B4-W-B";
+        List<CatalogSummarySheet.SheetRow> rows = List.of(
+                row(model, "性能参数", "Continuous Force (WC) @100°C", "Few", "N", "3489"),
+                row(model, "性能参数", "Peak Force", "Fpk", "N", "10467"),
+                row(model, "性能参数", "Force Constant ±10%", "Kf", "N/Arms", "446"),
+                row(model, "性能参数", "Back EMF Constant ±10%", "Ke", "V/(m/s)", "446"),
+                row(model, "性能参数", "Phase Resistance @25°C ±10%", "R25", "Ω", "0.62"),
+                row(model, "性能参数", "Continuous Current (WC) @100°C", "Icw", "Arms", "16"),
+                row(model, "性能参数", "Peak Current", "Ipk", "Arms", "48"),
+                row(model, "性能参数", "Continuous Power Dissipation (WC)", "Pcw", "W", "1485"),
+                row(model, "性能参数", "Thermal Dissipation Constant (WC)", "Kthw", "W/°C", "19.8"),
+                row(model, "性能参数", "Magnetic Period", "", "mm", "36"),
+                row(model, "性能参数", "Maximum Bus Voltage", "Ubus", "Vdc", "600"));
+
+        CatalogRowMapper.MappedMotor motor = mapper.map(rows).get(0);
+
+        assertThat(motor.type()).isEqualTo(MotorType.LINEAR);
+        assertThat(motor.missing()).isEmpty();
+        assertThat(motor.spec())
+                .containsEntry("kth", new BigDecimal("19.8"))
+                .containsEntry("iCont", new BigDecimal("16"))
+                .containsEntry("pn", new BigDecimal("1485"))
+                .containsEntry("forceCont", new BigDecimal("3489"))
+                .containsEntry("polePitch", new BigDecimal("36"));
+        // 冷却方式跟参数表走：名字里是英文 (WC)，型号结尾是 -B，只有参数表认得出来
+        assertThat(motor.cooling()).isEqualTo("水冷");
+    }
+
+    /**
+     * 短别名不许在别的单词里「碰运气」。
+     *
+     * <p>{@code Ip} 是 {@code dissipation} 的子串、{@code Ic} 是 {@code magnetic} 的子串。
+     * 一旦按子串算，热耗散常数会同时命中 {@code kth} 与 {@code iPeak}，
+     * {@code unique()} 判「不确定」返回 {@code null}，整行消失。
+     */
+    @Test
+    void shortAliasesMustNotMatchInsideUnrelatedWords() {
+        List<CatalogSummarySheet.SheetRow> rows = List.of(
+                row("AKM200-A-B4-W-B", "性能参数", "Thermal Dissipation Constant (WC)", "Kthw", "W/°C", "19.8"),
+                row("AKM200-A-B4-W-B", "性能参数", "Magnetic Period", "", "mm", "36"),
+                row("AKM200-A-B4-W-B", "性能参数", "Peak Current", "Ipk", "Arms", "48"));
+
+        CatalogRowMapper.MappedMotor motor = mapper.map(rows).get(0);
+
+        assertThat(motor.spec()).containsEntry("kth", new BigDecimal("19.8"))
+                .containsEntry("polePitch", new BigDecimal("36"))
+                .containsEntry("iPeak", new BigDecimal("48"));
+        assertThat(motor.spec()).doesNotContainKey("iCont");
+    }
+
+    /**
+     * 参数名里没有任何冷却字样时，型号结尾的 {@code -A} / {@code -W} 兜底。
+     *
+     * <p>但只看<b>结尾</b>：{@code AKM200-A-B4} 中间的 {@code -A-} 是「A 型」结构代号，
+     * 把它当气冷会把普通冷却的电机写错（真库 12 台 RDM 就是这样）。
+     */
+    @Test
+    void fallsBackToModelSuffixForCoolingButIgnoresStructureCode() {
+        List<CatalogRowMapper.MappedMotor> motors = mapper.map(List.of(
+                row("AUM4-S1-S-W", "性能参数", "Continuous Force @100°C", "Fcn", "N", "72"),
+                row("AUM4-S1-S-A", "性能参数", "Continuous Force @100°C", "Fcn", "N", "66"),
+                row("AKM200-A-B4", "性能参数", "Continuous Force @100°C", "Fcn", "N", "3000")));
+
+        assertThat(motors).extracting(CatalogRowMapper.MappedMotor::cooling)
+                .containsExactly("水冷", "气冷", "普通");
+    }
+
     private static CatalogSummarySheet.SheetRow row(String model, String section, String name,
                                                     String symbol, String unit, String value) {
         return new CatalogSummarySheet.SheetRow(model, section, name, symbol, unit, value);

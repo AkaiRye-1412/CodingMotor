@@ -131,6 +131,29 @@ class CalculationApiTest {
         assertThat(applied.path("supply").path("text").asText()).contains("供电满足");
     }
 
+    /**
+     * 样册入库的电机没有「最高线圈温度」（采集口径剔除了这一行）：按默认 100 °C 校核。
+     *
+     * <p>原实现把 {@code tCoil} 的守卫写成「rHot 有值」，而 rHot 依赖 tMax →
+     * 缺 tMax 时温度显示「—」，提示语还写死成「缺 热耗散常数 Kth」，用户照着补永远补不对。
+     * 现在缺 tMax 时温度照算，超温判定按 100 °C（用户裁定），热校核不再报「数据不足」。
+     */
+    @Test
+    void missingMaxCoilTempFallsBackToDefault100() throws Exception {
+        Long motorId = seedLinear("CALC-L-NOTMAX", 12, 48, null);
+
+        Map<String, Object> body = linearRequest();
+        body.put("selectedMotorId", motorId);
+        JsonNode applied = call(body, 200).path("data").path("selectedMotor").path("applied");
+
+        // 温度只用 r25 / kth / 实际电流迭代就行，不需要 tMax
+        assertThat(applied.path("coilTemp").isNumber()).isTrue();
+        assertThat(applied.path("coilTemp").asDouble()).isGreaterThan(22.0);
+        // tMax 有缺省值 → 热校核缺项为空，能给出 pass/fail 而不是 unknown
+        assertThat(applied.path("thermalMissing")).isEmpty();
+        assertThat(applied.path("thermalVerdict").asText()).isEqualTo("pass");
+    }
+
     @Test
     void rotaryUnitsAndCurveAreDisplayedInRpm() throws Exception {
         seedTorque("CALC-R1", 4.5, 13.5);
@@ -307,6 +330,44 @@ class CalculationApiTest {
         assertThat(candidates.get(0).path("modelName").asText()).isEqualTo("ACM100-A");
     }
 
+    /**
+     * 第 69 轮：直线页新增「结构」（冷却方式）筛选。
+     *
+     * <p>型号结尾 {@code -A} 算气冷、{@code -W} 算水冷；{@code RDM020-A-B2} 中间的
+     * {@code -A-} 是「A 型」结构代号，按库里冷却字段归为自然冷却，不能混进气冷。
+     */
+    @Test
+    void linearFiltersByCoolingStructure() throws Exception {
+        seedLinear("AUM4-S1-S", 12, 48);
+        seedLinear("AUM4-S1-S-A", 12, 48, 110.0, "气冷");
+        seedLinear("AUM4-S1-S-W", 12, 48, 110.0, "水冷");
+        seedLinear("RDM020-A-B2", 12, 48, 110.0, "普通");
+
+        Map<String, Object> body = linearRequest();
+        body.put("filters", Map.of("structures", List.of(), "coolings", List.of("气冷")));
+
+        JsonNode candidates = call(body, 200).path("data").path("candidates");
+        assertThat(candidates).hasSize(1);
+        assertThat(candidates.get(0).path("modelName").asText()).isEqualTo("AUM4-S1-S-A");
+    }
+
+    /** 「自然冷却」只收不带冷却后缀的型号；`-A-` 结构代号仍归这里。 */
+    @Test
+    void coolingFilterNaturalKeepsStructuralVariantsOut() throws Exception {
+        seedLinear("AUM4-S1-S", 12, 48);
+        seedLinear("AUM4-S1-S-A", 12, 48, 110.0, "气冷");
+        seedLinear("AUM4-S1-S-W", 12, 48, 110.0, "水冷");
+        seedLinear("RDM020-A-B2", 12, 48, 110.0, "普通");
+
+        Map<String, Object> body = linearRequest();
+        body.put("filters", Map.of("structures", List.of(), "coolings", List.of("自然冷却")));
+
+        JsonNode candidates = call(body, 200).path("data").path("candidates");
+        List<String> models = new ArrayList<>();
+        candidates.forEach(node -> models.add(node.path("modelName").asText()));
+        assertThat(models).containsExactly("AUM4-S1-S", "RDM020-A-B2");
+    }
+
     @Test
     void filteredOutSelectedMotorKeepsAppliedValues() throws Exception {
         Long motorId = seedLinear("CALC-L1", 12, 48);
@@ -385,7 +446,20 @@ class CalculationApiTest {
     }
 
     private Long seedLinear(String modelName, double forceCont, double forcePeak) {
-        MotorEntity motor = commonMotor(modelName, "linear", "无铁芯", "普通");
+        return seedLinear(modelName, forceCont, forcePeak, 110.0);
+    }
+
+    /**
+     * @param tMax 最高线圈温度；传 {@code null} 模拟「样册入库」的电机（采集口径不含这一行）
+     */
+    private Long seedLinear(String modelName, double forceCont, double forcePeak, Double tMax) {
+        return seedLinear(modelName, forceCont, forcePeak, tMax, "普通");
+    }
+
+    /** 第 69 轮：冷却筛选要用不同冷却字段的电机，故把 cooling 也开放出来。 */
+    private Long seedLinear(
+            String modelName, double forceCont, double forcePeak, Double tMax, String cooling) {
+        MotorEntity motor = commonMotor(modelName, "linear", "无铁芯", cooling);
         motorMapper.insert(motor);
 
         MotorLinearSpecEntity spec = new MotorLinearSpecEntity();
@@ -397,7 +471,7 @@ class CalculationApiTest {
         spec.setR25(BigDecimal(8.8));
         spec.setICont(BigDecimal(2.14));
         spec.setIPeak(BigDecimal(8.57));
-        spec.setTMax(BigDecimal(110));
+        spec.setTMax(tMax == null ? null : BigDecimal(tMax));
         spec.setKth(BigDecimal(1.1));
         spec.setUBus(BigDecimal(400));
         spec.setMaxSpeedPeak(BigDecimal(5.0));

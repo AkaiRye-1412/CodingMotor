@@ -54,7 +54,7 @@ public class PdfPageScanner {
         if (pageNumber < 1 || pageNumber > doc.getNumberOfPages()) {
             return new PageScan(List.of(), List.of(), 0, 0);
         }
-        List<Glyph> glyphs = readGlyphs(doc, pageNumber);
+        List<Glyph> glyphs = dropRotated(readGlyphs(doc, pageNumber));
         int chars = 0;
         for (Glyph g : glyphs) {
             if (!g.text().isBlank()) {
@@ -70,12 +70,50 @@ public class PdfPageScanner {
 
     // ---------------------------------------------------------------- 文字
 
-    /** 单个字形（PDFBox 的 TextPosition 投影）。 */
-    private record Glyph(String text, double x0, double width, double oy, double size) {
+    /**
+     * 单个字形（PDFBox 的 TextPosition 投影）。
+     *
+     * @param dir 文字方向角度（0 为水平；90/180/270 为旋转，取自 {@code TextPosition.getDir()}）
+     */
+    private record Glyph(String text, double x0, double width, double oy, double size, double dir) {
 
         double x1() {
             return x0 + width;
         }
+    }
+
+    /**
+     * 丢掉旋转排版的字形（2026-11-19 真样册踩坑）。
+     *
+     * <p>尺寸图里的坐标/电缆标注常以 90° 旋转绘制，而 {@code x0} 取的是
+     * {@code getXDirAdj()}——沿<b>文字方向</b>的偏移，不是页面 x。旋转 90° 时它会退化成
+     * 「约等于基线 y」，于是标注被投影到参数表中间：ADR050-T-014 的「相间电阻」行单位变成
+     * {@code 5Ω}、值变成 {@code 3.300.86；.0}，入库时报「缺少必填参数：相间电阻」。
+     *
+     * <p>整页都是旋转文字（图纸整页横排）时不丢——那时坐标口径本来就是文字方向的，
+     * 丢了等于整页无字。判据：水平字形占多数才认为「旋转的是插页标注」。
+     */
+    private static boolean isHorizontal(Glyph g) {
+        return Math.abs(g.dir()) < 1.0;
+    }
+
+    private static List<Glyph> dropRotated(List<Glyph> glyphs) {
+        int horizontal = 0;
+        for (Glyph g : glyphs) {
+            if (isHorizontal(g)) {
+                horizontal++;
+            }
+        }
+        if (horizontal * 2 < glyphs.size()) {
+            return glyphs;
+        }
+        List<Glyph> kept = new ArrayList<>(glyphs.size());
+        for (Glyph g : glyphs) {
+            if (isHorizontal(g)) {
+                kept.add(g);
+            }
+        }
+        return kept;
     }
 
     private List<Glyph> readGlyphs(PDDocument doc, int pageNumber) throws IOException {
@@ -112,7 +150,7 @@ public class PdfPageScanner {
             // 用 getY()（真实基线 y）而非 getYDirAdj()：样册的坐标轴标注是旋转 90° 的文字，
             // getYDirAdj() 会按文字方向做投影，导致这些标注被错误地「投影」到表格区域里。
             glyphs.add(new Glyph(unicode, text.getXDirAdj(), text.getWidthDirAdj(),
-                    text.getY(), text.getFontSizeInPt()));
+                    text.getY(), text.getFontSizeInPt(), text.getDir()));
         }
 
         /** 只要坐标，不产出纯文本（默认实现会把字拼进输出缓冲）。 */

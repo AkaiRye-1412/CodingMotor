@@ -129,7 +129,10 @@ export interface AppliedValues {
   thermalVerdict: string
   overBusVoltage: boolean
   supply: SupplyVerdict | null
+  /** 母线电压算不出来时缺的电机参数（Ke / R25 / Kf、Kt）。 */
   missing: string[]
+  /** 热校核缺的电机参数（相间电阻 R25 / 热耗散常数 Kth / 力常数 / 最高线圈温度 Tmax）。 */
+  thermalMissing: string[]
 }
 
 export interface SelectedMotorResult {

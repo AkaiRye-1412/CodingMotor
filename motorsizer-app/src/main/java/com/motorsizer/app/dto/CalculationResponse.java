@@ -99,7 +99,9 @@ public record CalculationResponse(
             String thermalVerdict,
             Boolean overBusVoltage,
             Supply supply,
-            List<String> missing) {
+            List<String> missing,
+            /** 热校核缺的电机参数（相间电阻 / 热耗散常数 / 力常数 / 最高线圈温度），空表示齐全。 */
+            List<String> thermalMissing) {
     }
 
     public record Supply(

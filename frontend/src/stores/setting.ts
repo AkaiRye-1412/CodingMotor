@@ -15,6 +15,8 @@ export const useSettingStore = defineStore('setting', {
     marginUpperPercent: 300,
     marginUpperEnabled: false,
     filterStructures: [] as string[],
+    /** 第 69 轮：「结构」（冷却方式）筛选，可选值见 COOLING_OPTIONS。 */
+    filterCoolings: [] as string[],
   }),
   actions: {
     toggleFilter(value: string) {
@@ -25,8 +27,20 @@ export const useSettingStore = defineStore('setting', {
         this.filterStructures.push(value)
       }
     },
+    toggleCooling(value: string) {
+      const index = this.filterCoolings.indexOf(value)
+      if (index >= 0) {
+        this.filterCoolings.splice(index, 1)
+      } else {
+        this.filterCoolings.push(value)
+      }
+    },
     clearFilters() {
       this.filterStructures = []
+      this.filterCoolings = []
     },
   },
 })
+
+/** 「结构」（冷却方式）选项，顺序与后端 MotorCooling.OPTIONS 一致。 */
+export const COOLING_OPTIONS = ['自然冷却', '气冷', '水冷'] as const

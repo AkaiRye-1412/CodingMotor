@@ -64,3 +64,20 @@ export interface MotorListQuery {
   structure?: string
   cooling?: string
 }
+
+/**
+ * 「补全参数」预填（样册入库里被跳过的电机）。
+ *
+ * <p>`spec` 是后端入库结果里的**内部单位**值；表单显示的是录入单位，回填时按 K2 的 factor 反算。
+ */
+export interface MotorPrefill {
+  modelName: string
+  configName: string
+  motorType: MotorTypeCode
+  structure: string
+  cooling: string
+  spec: Record<string, number | null>
+  /** 来源文档（PDF 名）：写库时记进 sourceDoc，与批量入库口径一致。 */
+  sourceDoc?: string | null
+  note?: string | null
+}

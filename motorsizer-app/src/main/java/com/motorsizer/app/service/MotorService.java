@@ -242,9 +242,9 @@ public class MotorService {
         // 第 67/68 轮：两个页签的 structures 都是「系列」前缀，无法用 SQL 的 in 表达式
         // 表达（含「其他」的排除法），下放到内存按型号名匹配。
         boolean seriesFilter = structures != null && !structures.isEmpty();
-        if (coolings != null && !coolings.isEmpty()) {
-            wrapper.in("cooling", coolings);
-        }
+        // 第 69 轮：「结构」（冷却方式）也不能用 SQL 的 in —— 库里的字段值是「普通/气冷/水冷」，
+        // 而筛选值有「自然冷却」，且要给字段为空的电机按型号名兜底。统一走 MotorCooling。
+        boolean coolingFilter = coolings != null && !coolings.isEmpty();
         wrapper.orderByAsc("motor_type", "model_name", "config_name");
 
         List<MotorEntity> motors = motorMapper.selectList(wrapper);
@@ -252,6 +252,12 @@ public class MotorService {
             return List.of();
         }
         List<CalculationMotor> assembled = assembleCalculationMotors(motors);
+        if (coolingFilter) {
+            assembled = assembled.stream()
+                    .filter(motor -> coolings.contains(
+                            MotorCooling.of(motor.modelName(), motor.cooling())))
+                    .toList();
+        }
         if (!seriesFilter) {
             return assembled;
         }

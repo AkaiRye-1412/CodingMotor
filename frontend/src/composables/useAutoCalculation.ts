@@ -69,7 +69,7 @@ export function useAutoCalculation() {
       },
       filters: {
         structures: [...setting.filterStructures],
-        coolings: [],
+        coolings: [...setting.filterCoolings],
       },
       selectedMotorId: motorStore.selectedMotorId,
     }

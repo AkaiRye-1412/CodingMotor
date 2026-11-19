@@ -27,6 +27,8 @@ public record AppliedResult(
         Double uAtCruise,
         Double rVolt,
         List<String> uMissing,
+        /** 热校核缺哪些电机参数（算温度 / 判超温各自需要什么，逐项列出）。 */
+        List<String> thermalMissing,
         Double safety,
         Double loadCont,
         Double loadPeak,
@@ -36,5 +38,6 @@ public record AppliedResult(
 
     public AppliedResult {
         uMissing = List.copyOf(uMissing);
+        thermalMissing = thermalMissing == null ? List.of() : List.copyOf(thermalMissing);
     }
 }

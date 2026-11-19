@@ -93,6 +93,42 @@ class CatalogWorkbookWriterTest {
         }
     }
 
+    /**
+     * 同一款电机的参数按冷却方式分列（{@code 持续电流（自冷）/（气冷）/（水冷）}）：
+     * 拆成三个型号，通用参数三个型号都带，「每型号一页」也一起拆。
+     */
+    @Test
+    void splitsCoolingVariantsIntoModels(@TempDir Path dir) throws Exception {
+        List<TableRow> rows = List.of(
+                row("持续电流（自冷）@100℃", "Icn", "Arms", "2.3"),
+                row("持续电流（气冷）@100℃", "Ica", "Arms", "2.8"),
+                row("持续电流（水冷）@100℃", "Icw", "Arms", "3.0"),
+                row("峰值电流", "Ipk", "Arms", "13.0"));
+        ParsedCatalog data = catalog("AUM4-S1-S", List.of("值"), rows);
+
+        Path xlsx = dir.resolve("out.xlsx");
+        CatalogWorkbookWriter.Result result = writer.write(data, xlsx);
+
+        assertThat(result.splitModels()).isEqualTo(1);
+        try (XSSFWorkbook wb = new XSSFWorkbook(Files.newInputStream(xlsx))) {
+            // 每型号一页也一起拆（型号不多时才出这几页）
+            assertThat(wb.getSheet("AUM4-S1-S")).isNotNull();
+            assertThat(wb.getSheet("AUM4-S1-S-A")).isNotNull();
+            assertThat(wb.getSheet("AUM4-S1-S-W")).isNotNull();
+
+            Sheet summary = wb.getSheet("参数汇总");
+            assertThat(valuesOf(summary, "持续电流"))
+                    .containsEntry("AUM4-S1-S", "2.3")
+                    .containsEntry("AUM4-S1-S-A", "2.8")
+                    .containsEntry("AUM4-S1-S-W", "3.0");
+            // 不带冷却标注的通用参数：三个型号都带
+            assertThat(valuesOf(summary, "峰值电流")).hasSize(3);
+
+            assertThat(reportValue(wb, "冷却变体"))
+                    .contains("AUM4-S1-S-A、AUM4-S1-S-W");
+        }
+    }
+
     // ---------------------------------------------------------------- 夹具
 
     private static TableRow row(String name, String sym, String unit, String... values) {
@@ -109,6 +145,33 @@ class CatalogWorkbookWriterTest {
     private static ParsedCatalog catalog(String model, List<String> labels, List<TableRow> rows) {
         CatalogTable table = new CatalogTable(2, model, labels, labels, rows);
         return new ParsedCatalog("sample.pdf", 3, 2000, true,
-                List.of(table), Map.of(), List.of(), List.of(), List.of(2), Map.of());
+                List.of(table), Map.of(), List.of(), List.of(), List.of(2), Map.of(), Map.of());
+    }
+
+    /** 「参数汇总」里某类参数：型号 → 值。 */
+    private static Map<String, String> valuesOf(Sheet sheet, String namePart) {
+        DataFormatter fmt = new DataFormatter();
+        Map<String, String> out = new java.util.LinkedHashMap<>();
+        for (int r = 1; r <= sheet.getLastRowNum(); r++) {
+            Row row = sheet.getRow(r);
+            if (row == null || !fmt.formatCellValue(row.getCell(2)).contains(namePart)) {
+                continue;
+            }
+            out.put(fmt.formatCellValue(row.getCell(0)), fmt.formatCellValue(row.getCell(5)));
+        }
+        return out;
+    }
+
+    /** 「识别报告」里某一项的内容。 */
+    private static String reportValue(XSSFWorkbook wb, String key) {
+        Sheet s = wb.getSheet("识别报告");
+        DataFormatter fmt = new DataFormatter();
+        for (int r = 0; r <= s.getLastRowNum(); r++) {
+            Row row = s.getRow(r);
+            if (row != null && key.equals(fmt.formatCellValue(row.getCell(0)))) {
+                return fmt.formatCellValue(row.getCell(1));
+            }
+        }
+        return "";
     }
 }

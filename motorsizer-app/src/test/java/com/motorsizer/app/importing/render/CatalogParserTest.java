@@ -54,11 +54,201 @@ class CatalogParserTest {
 
         List<TableRow> rows = table.rows().stream().filter(r -> !r.isSection()).toList();
         assertThat(rows).hasSize(4);
+        // 2026-11-19 用户裁定：「最高线圈温度」不进采集清单（夹具里刻意放了一行 tmax）
+        assertThat(rows).extracting(TableRow::name).doesNotContain("最高线圈温度");
+        assertThat(parsed.excludedParams()).containsEntry("最高线圈温度", 1);
+        assertThat(parsed.excludedRows()).isEqualTo(1);
         assertThat(rows.get(0).name()).isEqualTo("持续转矩");
         assertThat(rows.get(0).sym()).isEqualTo("Tcn");
         assertThat(rows.get(0).unit()).isEqualTo("Nm");
         assertThat(rows.get(0).values()).containsEntry("v0", "3.4").containsEntry("v1", "3.4");
         assertThat(rows.get(1).values()).containsEntry("v0", "10.0").containsEntry("v1", "10.0");
+    }
+
+    /**
+     * 小字号数值不能被当成脚注编号吞掉（2026-11-19 真样册踩坑）。
+     *
+     * <p>AUM3 的参数表用 5pt 排数值，{@code 持续推力 28N}、{@code 电磁周期 60}、
+     * {@code 磁吸力 0} 这些「1~2 位纯数字 + 小字号」同时满足旧的脚注判据，
+     * 被抽进 footnote 字段、值列变空 —— Excel 里整行没有持续推力，
+     * 入库时报「缺少必填参数：持续推力」。
+     *
+     * <p>判据补上「必须紧贴在前一段正文后面」：数值单元格只有它自己一个 run，永远不会被误判；
+     * 真脚注号（名字后面那个 {@code 4}）仍然能被剥出来。
+     */
+    @Test
+    void keepsSmallTwoDigitValuesAsData() throws Exception {
+        Path pdf = temp.resolve("small-numbers.pdf");
+        try (PDDocument doc = new PDDocument()) {
+            PDPage page = new PDPage(PDRectangle.A4);
+            doc.addPage(page);
+            PDType0Font font = PDType0Font.load(doc, Path.of(CJK_FONT).toFile());
+            try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+                text(cs, font, 8, 60, 760, "AUM3-S1");
+                text(cs, font, 8, 150, 730, "符号");
+                text(cs, font, 8, 200, 730, "单位");
+                text(cs, font, 8, 250, 730, "串联");
+                text(cs, font, 8, 300, 730, "并联");
+
+                // 带脚注号：名字后面紧跟一个 5pt 的「4」
+                String named = "持续推力(水冷)";
+                float w = font.getStringWidth(named) / 1000f * 8f;
+                text(cs, font, 8, 60, 716, named);
+                text(cs, font, 4, 60 + w + 1, 716, "4");
+                text(cs, font, 8, 150, 716, "Fcw");
+                text(cs, font, 8, 200, 716, "N");
+                text(cs, font, 4, 250, 716, "37");      // 4pt 的两位数，是参数值
+                text(cs, font, 4, 300, 716, "110");
+
+                // 不带脚注号：两位数 28 也不能被吞
+                text(cs, font, 8, 60, 700, "持续推力");
+                text(cs, font, 8, 150, 700, "Fcn");
+                text(cs, font, 8, 200, 700, "N");
+                text(cs, font, 4, 250, 700, "28");
+                text(cs, font, 4, 300, 700, "113");
+
+                // 表格至少要几行才会被当成参数表（MIN_NAMED_ROWS）
+                String[][] more = {
+                        {"峰值推力", "Fpk", "N", "144", "289"},
+                        {"力常数", "Kf", "N/Arms", "15.7", "31.4"},
+                        {"持续电流", "Icn", "Arms", "1.8", "3.6"}};
+                int y = 684;
+                for (String[] r : more) {
+                    text(cs, font, 8, 60, y, r[0]);
+                    text(cs, font, 8, 150, y, r[1]);
+                    text(cs, font, 8, 200, y, r[2]);
+                    text(cs, font, 4, 250, y, r[3]);
+                    text(cs, font, 4, 300, y, r[4]);
+                    y -= 14;
+                }
+            }
+            doc.save(pdf.toFile());
+        }
+
+        ParsedCatalog parsed = new CatalogParser(new PdfPageScanner()).parse(pdf);
+        assertThat(parsed.tables()).hasSize(1);
+
+        List<TableRow> rows = parsed.tables().get(0).rows().stream()
+                .filter(r -> !r.isSection()).toList();
+        assertThat(rows).hasSize(5);
+
+        TableRow cooled = rows.stream().filter(r -> r.name().startsWith("持续推力(水冷)")).findFirst().orElseThrow();
+        // 脚注号仍要剥出来，名字保持干净
+        assertThat(cooled.name()).isEqualTo("持续推力(水冷)");
+        assertThat(cooled.footnote()).contains("4");
+        assertThat(cooled.values()).containsEntry("v0", "37").containsEntry("v1", "110");
+
+        // 小字号两位数必须留在值列
+        TableRow plain = rows.stream().filter(r -> r.name().equals("持续推力")).findFirst().orElseThrow();
+        assertThat(plain.footnote()).isEmpty();
+        assertThat(plain.values()).containsEntry("v0", "28").containsEntry("v1", "113");
+    }
+
+    /**
+     * 符号的下标不是脚注（2026-11-19 真样册踩坑，ADR050-T-014）。
+     *
+     * <p>{@code R25} 里的 {@code 25} 是 4pt、紧贴 {@code R}，与真脚注号的特征完全重合；
+     * 被抽走后符号只剩 {@code R}，「相间电阻」这一行的 {@code sym} 对不上，整台电机
+     * 入库时报「缺少必填参数：相间电阻 @25°C ±10%」（而样册上 3.30 / 0.86 明明都有）。
+     *
+     * <p>唯一稳定的区别是列：脚注号跟在参数名后面（名字列），下标长在符号里面（符号列）。
+     */
+    @Test
+    void keepsSymbolSubscriptOutOfFootnote() throws Exception {
+        Path pdf = temp.resolve("symbol-subscript.pdf");
+        try (PDDocument doc = new PDDocument()) {
+            PDPage page = new PDPage(PDRectangle.A4);
+            doc.addPage(page);
+            PDType0Font font = PDType0Font.load(doc, Path.of(CJK_FONT).toFile());
+            try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+                text(cs, font, 8, 60, 760, "ADR050-T-014");
+                text(cs, font, 8, 150, 730, "符号");
+                text(cs, font, 8, 200, 730, "单位");
+                text(cs, font, 8, 250, 730, "低速");
+                text(cs, font, 8, 300, 730, "高速");
+
+                String name = "相间电阻@25°C ±10%";
+                text(cs, font, 8, 60, 716, name);
+                text(cs, font, 8, 150, 716, "R");
+                text(cs, font, 4, 155, 716, "25");       // 下标，不是脚注
+                text(cs, font, 8, 200, 716, "Ω");
+                text(cs, font, 8, 250, 716, "3.30");
+                text(cs, font, 8, 300, 716, "0.86");
+
+                text(cs, font, 8, 60, 702, "相间电感 ±20%");
+                text(cs, font, 8, 150, 702, "L");
+                text(cs, font, 8, 200, 702, "mH");
+                text(cs, font, 8, 250, 702, "1.25");
+                text(cs, font, 8, 300, 702, "0.32");
+
+                text(cs, font, 8, 60, 688, "峰值电流");
+                text(cs, font, 8, 150, 688, "Ipk");
+                text(cs, font, 8, 200, 688, "Arms");
+                text(cs, font, 8, 250, 688, "7.9");
+                text(cs, font, 8, 300, 688, "15.8");
+
+                text(cs, font, 8, 60, 674, "转矩常数");
+                text(cs, font, 8, 150, 674, "Kt");
+                text(cs, font, 8, 200, 674, "Nm/Arms");
+                text(cs, font, 8, 250, 674, "0.21");
+                text(cs, font, 8, 300, 674, "0.11");
+
+                text(cs, font, 8, 60, 660, "最高转速");
+                text(cs, font, 8, 150, 660, "Nmax");
+                text(cs, font, 8, 200, 660, "rpm");
+                text(cs, font, 8, 250, 660, "1750");
+                text(cs, font, 8, 300, 660, "3000");
+            }
+            doc.save(pdf.toFile());
+        }
+
+        ParsedCatalog parsed = new CatalogParser(new PdfPageScanner()).parse(pdf);
+        List<TableRow> rows = parsed.tables().get(0).rows().stream()
+                .filter(r -> !r.isSection()).toList();
+
+        TableRow r25 = rows.stream().filter(r -> r.name().startsWith("相间电阻")).findFirst().orElseThrow();
+        assertThat(r25.sym()).isEqualTo("R25");
+        assertThat(r25.unit()).isEqualTo("Ω");
+        assertThat(r25.footnote()).doesNotContain("25");
+        assertThat(r25.values()).containsEntry("v0", "3.30").containsEntry("v1", "0.86");
+    }
+
+    /**
+     * 旋转 90° 的图纸标注不能混进参数表（2026-11-19 真样册踩坑，ADR050-T-014 第 269 页）。
+     *
+     * <p>尺寸图的坐标/电缆标注以 90° 旋转绘制，{@code getXDirAdj()} 在这种文字上退化成
+     * 「约等于基线 y」，于是标注被投影到表格中间：单位变 {@code 5Ω}、值变
+     * {@code 3.300.86；.0}、「电机常数」行跟着一起坏。按 {@code getDir()} 丢掉旋转字形。
+     */
+    @Test
+    void dropsRotatedAnnotationsFromTable() throws Exception {
+        Path pdf = temp.resolve("rotated.pdf");
+        try (PDDocument doc = new PDDocument()) {
+            PDPage page = new PDPage(PDRectangle.A4);
+            doc.addPage(page);
+            PDType0Font font = PDType0Font.load(doc, Path.of(CJK_FONT).toFile());
+            try (PDPageContentStream cs = new PDPageContentStream(doc, page)) {
+                text(cs, font, 8, 60, 700, "持续转矩");
+                text(cs, font, 8, 150, 700, "Tcn");
+                text(cs, font, 8, 200, 700, "Nm");
+
+                // 旋转标注：落在单位列/值列之间
+                cs.beginText();
+                cs.setFont(font, 6);
+                cs.setTextMatrix(org.apache.pdfbox.util.Matrix.getRotateInstance(Math.PI / 2, 210, 690));
+                cs.showText("5.07");
+                cs.endText();
+            }
+            doc.save(pdf.toFile());
+        }
+
+        try (PDDocument doc = PDDocument.load(pdf.toFile())) {
+            PdfPageScanner.PageScan scan = new PdfPageScanner().scan(doc, 1);
+            assertThat(scan.runs()).extracting(TextRun::token)
+                    .contains("持续转矩", "Tcn", "Nm");
+            // 旋转的字整段丢弃，否则它会以「5.07」或碎片形式出现在单位/值列
+            assertThat(scan.runs()).noneMatch(r -> r.text().contains("5"));
+        }
     }
 
     @Test
@@ -87,6 +277,20 @@ class CatalogParserTest {
             assertThat(summary.getRow(1).getCell(5).getNumericCellValue()).isEqualTo(3.4);
             assertThat(summary.getRow(2).getCell(0).getStringCellValue()).isEqualTo("AXD120-71-P");
             assertThat(summary.getRow(2).getCell(5).getNumericCellValue()).isEqualTo(3.4);
+
+            // 报告页要把「采集口径剔除」写出来：用户看到少一行 tmax 时能对上账
+            var report = wb.getSheet("识别报告");
+            var fmt = new org.apache.poi.ss.usermodel.DataFormatter();
+            Map<String, String> kv = new LinkedHashMap<>();
+            for (int i = 1; i <= report.getLastRowNum(); i++) {
+                var r = report.getRow(i);
+                if (r != null && r.getCell(0) != null) {
+                    kv.put(fmt.formatCellValue(r.getCell(0)).trim(),
+                            r.getCell(1) == null ? "" : fmt.formatCellValue(r.getCell(1)).trim());
+                }
+            }
+            assertThat(kv).containsKeys("不采集参数", "按采集口径剔除");
+            assertThat(kv.get("按采集口径剔除")).contains("最高线圈温度").contains("已剔除");
         }
     }
 
@@ -109,6 +313,38 @@ class CatalogParserTest {
                 .containsEntry("机械参数", 1)
                 .containsEntry("其他信息", 1)
                 .containsEntry("编码器参数", 1);
+    }
+
+    /**
+     * 采集口径（2026-11-19 用户裁定）：样册识别导出的采集清单里不需要「最高线圈温度」。
+     *
+     * <p>三种写法都要拦下：符号 {@code Tmax}、中文名「最高线圈温度」、英文名
+     * {@code Max. coil temperature}（客户图纸是英文）；「最高母线电压」「最高转速」
+     * 同样带「最高」，不能被误伤。
+     */
+    @Test
+    void dropsCoilTemperatureRows() {
+        CatalogParser parser = new CatalogParser(new PdfPageScanner());
+        List<TableRow> rows = List.of(
+                section("性能参数"),
+                param("最高线圈温度", "tmax", "°C", "100"),
+                param("最高线圈温度", "Tmax", "°C", "100"),
+                param("Max. coil temperature", "TMAX", "°C", "100"),
+                param("最高母线电压", "Ubus", "Vdc", "60"),
+                param("最高转速", "Nmax", "rpm", "2000"));
+
+        Map<String, Integer> excluded = new LinkedHashMap<>();
+        List<TableRow> kept = parser.dropExcludedParameters(rows, excluded);
+
+        assertThat(kept).extracting(TableRow::name)
+                .containsExactly("性能参数", "最高母线电压", "最高转速");
+        assertThat(excluded)
+                .containsEntry("最高线圈温度", 2)
+                .containsEntry("Max. coil temperature", 1);
+        // 符号列被 OCR 读坏、名字也没取到时，靠符号判断的那一路必须还在
+        assertThat(LayoutRules.isExcludedParameter("", "T max")).isTrue();
+        assertThat(LayoutRules.isExcludedParameter("最高母线电压", "Ubus")).isFalse();
+        assertThat(LayoutRules.isExcludedParameter("最高转速", "Nmax")).isFalse();
     }
 
     /**
@@ -356,6 +592,12 @@ class CatalogParserTest {
                     .allMatch(LayoutRules::isKeptSection);
         }
         assertThat(parsed.droppedRows()).isPositive();
+        // 采集口径（2026-11-19）：性能参数里的「最高线圈温度」不进采集清单，删了几行要能对上账
+        assertThat(parsed.tables().stream()
+                .flatMap(t -> t.rows().stream())
+                .filter(r -> !r.isSection()))
+                .noneMatch(r -> r.name().contains("线圈温度"));
+        assertThat(parsed.excludedRows()).isPositive();
         Path xlsx = temp.resolve("real.xlsx");
         new CatalogWorkbookWriter().write(parsed, xlsx);
         assertThat(Files.size(xlsx)).isGreaterThan(5000);
@@ -375,6 +617,15 @@ class CatalogParserTest {
         TableRow r = new TableRow();
         r.name = name;
         r.values.put("v0", "1");
+        return r;
+    }
+
+    private static TableRow param(String name, String sym, String unit, String value) {
+        TableRow r = new TableRow();
+        r.name = name;
+        r.sym = sym;
+        r.unit = unit;
+        r.values.put("v0", value);
         return r;
     }
 
@@ -398,6 +649,7 @@ class CatalogParserTest {
                         {"持续转矩", "Tcn", "Nm", "3.4", "3.4"},
                         {"峰值转矩", "Tpk", "Nm", "10.0", "10.0"},
                         {"转矩常数", "Kt", "Nm/Arms", "3.0", "1.5"},
+                        {"最高线圈温度", "tmax", "°C", "100", "100"},
                         {"最高转速", "Nmax", "rpm", "1700", "2000"}};
                 int y = 716;
                 for (String[] row : rows) {

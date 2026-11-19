@@ -113,7 +113,12 @@ public final class MotorCatalogTemplates {
             "最高母线电压", "母线电压", "供电电压", "Ubus",
             "Bus voltage", "DC bus voltage", "U_bus", "Vdc", "Supply voltage"
     };
-    private static final String[] A_POLE_PITCH = {"电磁周期", "极距", "Pole pitch", "Pole-pitch"};
+    private static final String[] A_POLE_PITCH = {
+            "电磁周期", "极距", "Pole pitch", "Pole-pitch",
+            // AKM 英文图纸写 Magnetic Period（电磁周期）。不认它时这一行会靠短别名的
+            // 「包含」误落到持续电流上（Ic ⊂ magnetIc），把真的持续电流挤成「重复出现」。
+            "Magnetic period"
+    };
     private static final String[] A_MAG_FORCE = {"磁吸力", "Magnetic attraction", "Attractive force"};
     private static final String[] A_MOVER_MASS = {
             "线圈质量", "动子质量", "Mover mass", "Moving mass", "Forcer mass"
@@ -204,7 +209,7 @@ public final class MotorCatalogTemplates {
             List.of("标准", "特殊"),
             List.of(
                     new MotorFieldGroup(GROUP_PERFORMANCE, false, List.of(
-                            bothRequired("torqueCont", "持续转矩 @100°C", "Nm").withAliases(A_TORQUE_CONT).withSymbol("Tcn"),
+                            bothRequired("torqueCont", "持续转矩 ({cool}) @100°C", "Nm").withAliases(A_TORQUE_CONT).withSymbol("Tcn"),
                             bothRequired("torquePeak", "峰值转矩", "Nm").withAliases(A_TORQUE_PEAK).withSymbol("Tpk"),
                             bothRequired("kt", "转矩常数 ±10%", "Nm/Arms").withAliases(A_KT).withSymbol("Kt"),
                             bothRequired("ke", "反电势常数 ±10%", "Vpeak/rpm").withAliases(A_KE).withSymbol("Ke"),
@@ -212,11 +217,11 @@ public final class MotorCatalogTemplates {
                             bothRequired("r25", "相间电阻 @25°C ±10%", "Ω").withAliases(A_R25).withSymbol("R25"),
                             both("l", "相间电感 ±20%", "mH").withAliases(A_L).withSymbol("L"),
                             formOnly("te", "电气时间常数", "ms").withAliases(A_TE).withSymbol("Te"),
-                            bothRequired("iCont", "持续电流 @100°C", "Arms").withAliases(A_ICONT).withSymbol("Icn"),
+                            bothRequired("iCont", "持续电流 ({cool}) @100°C", "Arms").withAliases(A_ICONT).withSymbol("Icn"),
                             bothRequired("iPeak", "峰值电流", "Arms").withAliases(A_IPEAK).withSymbol("Ipk"),
-                            formOnly("pn", "持续热功率 @100°C", "W").withAliases(A_PN).withSymbol("Pcn"),
+                            formOnly("pn", "持续热功率 ({cool}) @100°C", "W").withAliases(A_PN).withSymbol("Pcn"),
                             formOnly("tMax", "最高线圈温度", "°C").withAliases(A_TMAX).withSymbol("Tmax"),
-                            formOnlyRequired("kth", "热耗散常数", "W/°C").withAliases(A_KTH).withSymbol("Kth"),
+                            formOnlyRequired("kth", "热耗散常数 ({cool})", "W/°C").withAliases(A_KTH).withSymbol("Kth"),
                             formOnlyRequired("uBus", "最高母线电压", "Vdc").withAliases(A_UBUS).withSymbol("Ubus"),
                             formOnly("poles", "极数", "-").withAliases(A_POLES).withSymbol("2p"),
                             // 第 66 轮：不再是必填。样册口径并不统一——AXD 系列写「最高转速 @ 持续扭矩（600V）」，
@@ -300,4 +305,16 @@ public final class MotorCatalogTemplates {
     public static Map<MotorType, MotorTypeTemplate> all() {
         return TEMPLATES;
     }
+
+    /**
+     * 默认最高线圈温度（°C，2026-11-19 用户裁定）。
+     *
+     * <p>样册采集口径里剔掉了「最高线圈温度」这一行，而热校核（允许电流、是否超温）
+     * 必须有它。用户的口径是「都按默认 100」：样册入库的电机若没有该值，一律补 100 °C，
+     * 让温度与超温判定都能直接算出来；录入表单里用户显式填了值的一律以填的为准。
+     *
+     * <p>放在模板类里是为了让「入库补值」（{@code CatalogRowMapper}）与「计算兜底」
+     * （{@code AppliedCalculator}）用同一个常量，不出现两处各写一个 100。
+     */
+    public static final double DEFAULT_MAX_COIL_TEMP = 100.0;
 }

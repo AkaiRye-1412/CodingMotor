@@ -202,7 +202,8 @@ public class ReportService {
         }
 
         List<ReportModel.ReportRow> appliedRows = appliedRows(axis, applied);
-        String thermalVerdict = applied == null ? "—" : thermalVerdict(applied.thermalVerdict());
+        String thermalVerdict = applied == null ? "—" : thermalVerdict(applied.thermalVerdict(),
+                applied.thermalMissing());
         String supplyText = applied == null || applied.supply() == null
                 ? "未填写供电母线，未做供电判定"
                 : applied.supply().text();
@@ -374,7 +375,10 @@ public class ReportService {
         boolean linear = axis == AxisKind.LINEAR;
         String currentConstant = linear ? "力常数 Kf" : "转矩常数 Kt";
         List<ReportModel.ReportRow> rows = new ArrayList<>();
-        rows.add(row("线圈温度", appliedValue(applied.coilTemp(), "缺 热耗散常数 Kth"), "°C"));
+        String thermalMissing = applied.thermalMissing() == null || applied.thermalMissing().isEmpty()
+                ? null
+                : "缺 " + String.join(" / ", applied.thermalMissing());
+        rows.add(row("线圈温度", appliedValue(applied.coilTemp(), thermalMissing), "°C"));
         rows.add(row("连续电流", appliedValue(applied.contCurrent(), "缺 " + currentConstant), "A"));
         rows.add(row("峰值电流", appliedValue(applied.peakCurrent(), "缺 " + currentConstant), "A"));
         rows.add(row("直流母线电压", appliedValue(applied.busVoltage(),
@@ -439,14 +443,17 @@ public class ReportService {
         return text;
     }
 
-    private static String thermalVerdict(String verdict) {
+    private static String thermalVerdict(String verdict, List<String> thermalMissing) {
         if ("pass".equals(verdict)) {
             return "电机选型合适";
         }
         if ("fail".equals(verdict)) {
             return "线圈温度超限";
         }
-        return "热校核数据不足";
+        // 说清到底缺什么：样册入库的电机通常缺「最高线圈温度 Tmax」（采集口径里不含这一行）
+        return thermalMissing == null || thermalMissing.isEmpty()
+                ? "热校核数据不足"
+                : "热校核数据不足（缺 " + String.join(" / ", thermalMissing) + "）";
     }
 
     private static String filename(String projectName, String axisName) {

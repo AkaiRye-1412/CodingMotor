@@ -18,11 +18,13 @@ import java.util.Set;
  * @param imageTablePages 其中「本该有参数表、但参数表是位图」的页（图片占比高且页面出现规格类标题）
  * @param ocrPages     通过 OCR 才解析出参数表的页（数据来自图像识别，需重点核对）
  * @param sectionRows  分节名 → 数据行数（含被过滤掉的分节，保序）
+ * @param excludedParams 采集口径下被剔除的参数 → 行数（如「最高线圈温度」，保序）
  */
 public record ParsedCatalog(String source, int pageCount, int charCount, boolean hasTextLayer,
                             List<CatalogTable> tables, Map<Integer, String> footnotes,
                             List<Integer> skippedPages, List<Integer> imageTablePages,
-                            List<Integer> ocrPages, Map<String, Integer> sectionRows) {
+                            List<Integer> ocrPages, Map<String, Integer> sectionRows,
+                            Map<String, Integer> excludedParams) {
 
     /** 型号数（去重保序）。 */
     public int modelCount() {
@@ -58,6 +60,23 @@ public record ParsedCatalog(String source, int pageCount, int charCount, boolean
             if (!e.getKey().isEmpty() && !LayoutRules.KEEP_SECTIONS.contains(e.getKey())) {
                 n += e.getValue();
             }
+        }
+        return n;
+    }
+
+    /**
+     * 被「采集口径」剔除的数据行数（保留分节里不要的项，如最高线圈温度）。
+     *
+     * <p>与 {@link #droppedRows()} 分开统计：分节过滤是「整块不要」，这里是「个别项不要」，
+     * 报告里分开写，用户才知道某一行消失是哪种原因。
+     */
+    public int excludedRows() {
+        if (excludedParams == null) {
+            return 0;
+        }
+        int n = 0;
+        for (int v : excludedParams.values()) {
+            n += v;
         }
         return n;
     }

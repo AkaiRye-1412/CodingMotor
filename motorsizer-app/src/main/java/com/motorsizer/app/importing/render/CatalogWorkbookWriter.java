@@ -68,21 +68,29 @@ public class CatalogWorkbookWriter {
     private static final Pattern SHEET_NAME_ILLEGAL = Pattern.compile("[\\[\\]:*?/\\\\]");
     private static final DateTimeFormatter STAMP = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
-    /** 写出结果（统计列进 job.json，供前端展示）。 */
-    public record Result(int dataRows, boolean wide) {
+    /**
+     * 写出结果（统计列进 job.json，供前端展示）。
+     *
+     * @param dataRows    「参数汇总」的数据行数（冷却变体拆开后按拆出的型号各算一份）
+     * @param wide        源表是否为「串联 | 并联」两列版式（只用于报告标注）
+     * @param splitModels 按冷却方式拆过的源型号数（0 表示本样册没有冷却变体）
+     */
+    public record Result(int dataRows, boolean wide, int splitModels) {
     }
 
     public Result write(ParsedCatalog data, Path target) throws IOException {
         if (target.getParent() != null) {
             Files.createDirectories(target.getParent());
         }
+        // 冷却变体：型号 AUM4-S1-S 的参数若按「自冷/气冷/水冷」分列，拆成 AUM4-S1-S / -A / -W 三个型号
+        CoolingVariants.Expansion expansion = CoolingVariants.expand(data.tables());
         try (XSSFWorkbook wb = new XSSFWorkbook();
              OutputStream out = Files.newOutputStream(target)) {
             StyleBank styles = new StyleBank(wb);
-            Result result = writeSummarySheet(wb, styles, data);
-            writeModelSheets(wb, styles, data);
+            int dataRows = writeSummarySheet(wb, styles, expansion.tables());
+            writeModelSheets(wb, styles, expansion.tables());
             writeFootnoteSheet(wb, styles, data);
-            writeReportSheet(wb, styles, data, result);
+            writeReportSheet(wb, styles, data, expansion, dataRows);
 
             Path src = Path.of(data.source());
             String stem = src.getFileName() == null ? "样册" : src.getFileName().toString();
@@ -95,26 +103,28 @@ public class CatalogWorkbookWriter {
             wb.getProperties().getCoreProperties().setDescription(
                     "由 PDF 文字层坐标级解析生成；AI 生成内容，使用前请与原样册核对。");
             wb.write(out);
-            return result;
+            return new Result(dataRows, isWide(data.tables()), expansion.splitCount());
         }
     }
 
     // ---------------------------------------------------------------- 参数汇总
 
-    private Result writeSummarySheet(XSSFWorkbook wb, StyleBank styles, ParsedCatalog data) {
-        // 源表是不是「串联 | 并联」两列版式：只用于报告标注，输出结构一律是单列「值」。
+    /** 源表是不是「串联 | 并联」两列版式：只用于报告标注，输出结构一律是单列「值」。 */
+    private boolean isWide(List<CatalogTable> tables) {
         // 注意不能用 Set.copyOf(labels) 去重——两列同名时它会抛 IllegalArgumentException，
         // 而「两列都叫 Value」在单配置图纸里很常见。
-        boolean wide = data.tables().stream().allMatch(t ->
+        return tables.stream().allMatch(t ->
                 t.labels().size() <= 2 && t.labels().stream()
                         .allMatch(l -> l.equals("串联") || l.equals("并联")));
+    }
 
+    private int writeSummarySheet(XSSFWorkbook wb, StyleBank styles, List<CatalogTable> tables) {
         Sheet ws = wb.createSheet("参数汇总");
         List<String> heads = List.of("型号", "类别", "参数名", "符号", "单位", "值");
         styles.head(ws, 0, heads);
 
         int r = 1;
-        for (CatalogTable table : data.tables()) {
+        for (CatalogTable table : tables) {
             String section = "";
             for (TableRow row : table.rows()) {
                 if (row.isSection()) {
@@ -125,8 +135,10 @@ public class CatalogWorkbookWriter {
                     continue;
                 }
                 for (Map.Entry<String, String> e : outputCells(table, row).entrySet()) {
-                    // 型号列 = 型号 + 该接法（串联 → -S、并联 → -P），去重后拼成完整型号
-                    set(ws, r, 0, mergeModelConfig(table.model(), e.getKey()), styles, true);
+                    // 型号列 = 型号 + 该接法（串联 → -S、并联 → -P）+ 冷却后缀（气冷 -A / 水冷 -W）
+                    set(ws, r, 0,
+                            CoolingVariants.appendSuffix(mergeModelConfig(table.model(), e.getKey()),
+                                    table.variant()), styles, true);
                     set(ws, r, 1, section, styles, true);
                     set(ws, r, 2, row.name, styles, false);
                     set(ws, r, 3, row.sym, styles, true);
@@ -145,7 +157,7 @@ public class CatalogWorkbookWriter {
         if (r > 1) {
             ws.setAutoFilter(new CellRangeAddress(0, r - 1, 0, 5));
         }
-        return new Result(r - 1, wide);
+        return r - 1;
     }
 
     /**
@@ -260,7 +272,7 @@ public class CatalogWorkbookWriter {
 
     /** 工作表名：清掉 Excel 禁用字符、限 31 字、不与已有工作表重名。 */
     private static String sheetName(XSSFWorkbook wb, CatalogTable table) {
-        String base = sanitizeSheetName(table.model());
+        String base = sanitizeSheetName(table.outputModel());
         String name = base;
         if (wb.getSheet(name) != null) {
             name = withTail(base, "_" + table.page());
@@ -298,18 +310,22 @@ public class CatalogWorkbookWriter {
 
     // ---------------------------------------------------------------- 型号原版式页
 
-    private void writeModelSheets(XSSFWorkbook wb, StyleBank styles, ParsedCatalog data) {
-        List<String> models = CatalogParser.distinctModels(data.tables());
+    /**
+     * 每型号一页的原版式工作表。传进来的是<b>已按冷却变体拆过</b>的表
+     * （{@code AUM4-S1-S} / {@code -A} / {@code -W} 各一页）。
+     */
+    private void writeModelSheets(XSSFWorkbook wb, StyleBank styles, List<CatalogTable> tables) {
+        List<String> models = CatalogParser.distinctModels(tables);
         if (models.size() > 12) {
             return;                                   // 型号过多时只出长表，避免上百个可分页
         }
-        for (CatalogTable table : data.tables()) {
+        for (CatalogTable table : tables) {
             String name = sheetName(wb, table);
 
             Sheet s = wb.createSheet(name);
             Row title = s.createRow(0);
             Cell titleCell = title.createCell(0);
-            titleCell.setCellValue(table.model() + " 参数表（源：第 " + table.page() + " 页）");
+            titleCell.setCellValue(table.outputModel() + " 参数表（源：第 " + table.page() + " 页）");
             titleCell.setCellStyle(styles.title());
 
             List<String> hd = new java.util.ArrayList<>(List.of("参数名", "符号", "单位"));
@@ -390,7 +406,8 @@ public class CatalogWorkbookWriter {
 
     // ---------------------------------------------------------------- 识别报告
 
-    private void writeReportSheet(XSSFWorkbook wb, StyleBank styles, ParsedCatalog data, Result result) {
+    private void writeReportSheet(XSSFWorkbook wb, StyleBank styles, ParsedCatalog data,
+                                  CoolingVariants.Expansion expansion, int dataRows) {
         Sheet s = wb.createSheet("识别报告");
         Path src = Path.of(data.source());
         List<String[]> info = List.of(
@@ -405,7 +422,11 @@ public class CatalogWorkbookWriter {
                 new String[]{"保留分节", String.join("、", LayoutRules.KEEP_SECTIONS)},
                 new String[]{"分节明细", sectionSummary(data)},
                 new String[]{"丢弃行数", String.valueOf(data.droppedRows())},
-                new String[]{"长表数据行", String.valueOf(result.dataRows())},
+                new String[]{"不采集参数", LayoutRules.EXCLUDED_PARAM_DESC},
+                new String[]{"按采集口径剔除", excludedSummary(data)},
+                new String[]{"冷却变体口径", CoolingVariants.rule()},
+                new String[]{"冷却变体", variantSummary(data.tables(), expansion)},
+                new String[]{"长表数据行", String.valueOf(dataRows)},
                 new String[]{"脚注条数", String.valueOf(data.footnotes().size())},
                 new String[]{"未识别页", data.skippedPages().isEmpty() ? "无"
                         : String.join("、", data.skippedPages().stream().limit(80).map(String::valueOf).toList())},
@@ -461,6 +482,18 @@ public class CatalogWorkbookWriter {
                 : "文字版，但参数表以图片形式嵌入";
     }
 
+    /** 「识别报告」里被采集口径剔除的项：删了哪个参数、几行，避免用户以为识别丢行。 */
+    private String excludedSummary(ParsedCatalog data) {
+        if (data.excludedParams() == null || data.excludedParams().isEmpty()) {
+            return "无（本样册未出现「" + LayoutRules.EXCLUDED_PARAM_DESC + "」）";
+        }
+        List<String> parts = new ArrayList<>();
+        for (Map.Entry<String, Integer> e : data.excludedParams().entrySet()) {
+            parts.add(e.getKey() + " " + e.getValue() + " 行（已剔除）");
+        }
+        return String.join("｜", parts);
+    }
+
     /** 「识别报告」里的分节说明：每节命中多少行、保留还是丢弃，让过滤结果可追溯。 */
     private String sectionSummary(ParsedCatalog data) {
         if (data.sectionRows().isEmpty()) {
@@ -473,6 +506,19 @@ public class CatalogWorkbookWriter {
             parts.add(name + " " + e.getValue() + " 行" + (kept ? "（保留）" : "（已丢弃）"));
         }
         return String.join("｜", parts);
+    }
+
+    /** 「识别报告」里的冷却变体说明：拆了哪些型号、拆出多少，让型号变多这件事可追溯。 */
+    private String variantSummary(List<CatalogTable> sources, CoolingVariants.Expansion expansion) {
+        if (expansion.splitCount() == 0) {
+            return "无（参数名里没有「自冷/气冷/水冷」标注，所有型号原样输出）";
+        }
+        int added = expansion.tables().size() - sources.size();
+        List<String> shown = expansion.splitModels().stream().limit(3).toList();
+        return "有 " + expansion.splitCount() + " 个型号按冷却方式拆分，新增 " + added
+                + " 个型号（气冷 -A、水冷 -W），拆分后共 "
+                + CatalogParser.distinctModels(expansion.tables()).size() + " 个型号；示例："
+                + String.join("；", shown) + (expansion.splitCount() > shown.size() ? " 等" : "");
     }
 
     // ---------------------------------------------------------------- 单元格写入

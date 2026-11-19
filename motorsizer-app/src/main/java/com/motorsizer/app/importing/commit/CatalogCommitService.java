@@ -98,9 +98,10 @@ public class CatalogCommitService {
                                        CatalogRowMapper.MappedMotor motor) {
         String type = motor.type().code();
         if (!motor.missing().isEmpty()) {
+            // 跳过也要把「已经认出来的参数」带回去：前端据此预填补全表单，用户只补缺的那几项
             return ImportCommitItem.skipped(motor.modelName(), motor.configName(), type,
                     motor.structure(), motor.cooling(),
-                    "缺少必填参数：" + String.join("、", motor.missing()));
+                    "缺少必填参数：" + String.join("、", motor.missing()), motor.spec());
         }
 
         MotorUpsertRequest request = new MotorUpsertRequest(
@@ -124,19 +125,19 @@ public class CatalogCommitService {
             if (existing != null) {
                 motorService.update(existing, request);
                 return ImportCommitItem.updated(motor.modelName(), motor.configName(), type,
-                        motor.structure(), motor.cooling(), existing);
+                        motor.structure(), motor.cooling(), existing, motor.spec());
             }
             Long created = motorService.create(request);
             return ImportCommitItem.created(motor.modelName(), motor.configName(), type,
-                    motor.structure(), motor.cooling(), created);
+                    motor.structure(), motor.cooling(), created, motor.spec());
         } catch (BusinessException ex) {
             return ImportCommitItem.failed(motor.modelName(), motor.configName(), type,
-                    motor.structure(), motor.cooling(), describe(ex));
+                    motor.structure(), motor.cooling(), describe(ex), motor.spec());
         } catch (RuntimeException ex) {
             log.warn("入库单台失败: {} {} / {} ({})", jobId, motor.modelName(),
                     motor.configName(), ex.getMessage(), ex);
             return ImportCommitItem.failed(motor.modelName(), motor.configName(), type,
-                    motor.structure(), motor.cooling(), "保存失败，请重试");
+                    motor.structure(), motor.cooling(), "保存失败，请重试", motor.spec());
         }
     }
 

@@ -148,7 +148,10 @@ class ImportApiTest {
                 .andExpect(jsonPath("$.data.items[0].modelName").value("TQ120-71-S"))
                 .andExpect(jsonPath("$.data.items[0].configName").value("默认"))
                 .andExpect(jsonPath("$.data.items[0].motorType").value("torque"))
-                .andExpect(jsonPath("$.data.items[0].status").value("CREATED"));
+                .andExpect(jsonPath("$.data.items[0].status").value("CREATED"))
+                // 每台都要带回「已映射到的参数」：前端的「补全参数」表单靠它预填
+                .andExpect(jsonPath("$.data.items[0].spec").isMap())
+                .andExpect(jsonPath("$.data.items[0].spec").isNotEmpty());
 
         // 再点一次「入库」：主键相同 → 覆盖，库里仍然只有 2 台
         mockMvc.perform(post("/api/imports/{jobId}/commit", jobId))
@@ -218,13 +221,72 @@ class ImportApiTest {
                 .andExpect(jsonPath("$.code").value("IMPORT_JOB_NOT_FOUND"));
     }
 
+    /**
+     * 缺一项必填（转矩常数 {@code Kt}）的力矩样册 → 两台都跳过。
+     *
+     * <p>跳过不是「什么都不给」：已经认出来的参数必须随结果返回，前端「补全参数」才能预填、
+     * 用户只补缺的那一项。这条链路一旦断掉，按钮点开就是一张空表。
+     */
+    @Test
+    void skippedMotorsCarryMappedSpecForQuickFix() throws Exception {
+        String[][] rows = {
+                {"持续转矩@100°C", "Tcn", "Nm", "3.4", "1.7"},
+                {"峰值转矩", "Tpk", "Nm", "10.0", "5.0"},
+                // 刻意缺「转矩常数 Kt」
+                {"反电势常数", "Ke", "Vpeak/rpm", "0.26", "0.13"},
+                {"相间电阻", "R25", "Ohm", "1.92", "0.96"},
+                {"持续电流@100°C", "Icn", "Arms", "3.8", "1.9"},
+                {"峰值电流", "Ipk", "Arms", "12.2", "6.1"},
+                {"热耗散常数", "Kth", "W/C", "0.715", "0.715"},
+                {"最高母线电压", "Ubus", "Vdc", "600", "600"},
+                {"最高转速@峰值转矩", "Nmax", "rpm", "1700", "1700"},
+                {"最高转速@持续转矩", "Nmax", "rpm", "2000", "2000"}};
+        MockMultipartFile file = new MockMultipartFile("file", "TQ120-no-kt.pdf",
+                "application/pdf", torqueCatalogPdf(rows));
+        MvcResult created = mockMvc.perform(multipart("/api/imports").file(file))
+                .andExpect(status().isCreated())
+                .andReturn();
+        String jobId = objectMapper.readTree(created.getResponse().getContentAsString())
+                .path("data").path("jobId").asText();
+
+        mockMvc.perform(post("/api/imports/{jobId}/commit", jobId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.skipped").value(2))
+                .andExpect(jsonPath("$.data.items[0].status").value("SKIPPED"))
+                .andExpect(jsonPath("$.data.items[0].spec").isNotEmpty())
+                .andExpect(jsonPath("$.data.items[0].spec.r25").exists())
+                .andExpect(jsonPath("$.data.items[0].message").exists());
+
+        // 跳过的都没有写库
+        mockMvc.perform(get("/api/motors").param("keyword", "TQ120-71"))
+                .andExpect(jsonPath("$.data.total").value(0));
+
+        mockMvc.perform(delete("/api/imports/{jobId}", jobId)).andExpect(status().isOk());
+    }
+
     // ---------------------------------------------------------------- 夹具
 
-    /**
-     * 一页力矩样册式表格：12 个必填参数齐备（{@code Tcn/Tpk/Kt/Ke/R25/Icn/Ipk/Tmax/Kth/Ubus} +
+    /** 一页力矩样册式表格：12 个必填参数齐备（{@code Tcn/Tpk/Kt/Ke/R25/Icn/Ipk/Tmax/Kth/Ubus} +
      * 两行 {@code 最高转速}），串联/并联各一列 → Excel 出 {@code -S} / {@code -P} 两个型号。
      */
     private byte[] torqueCatalogPdf() throws Exception {
+        return torqueCatalogPdf(new String[][]{
+                {"持续转矩@100°C", "Tcn", "Nm", "3.4", "1.7"},
+                {"峰值转矩", "Tpk", "Nm", "10.0", "5.0"},
+                {"转矩常数", "Kt", "Nm/Arms", "3.0", "1.5"},
+                {"反电势常数", "Ke", "Vpeak/rpm", "0.26", "0.13"},
+                {"相间电阻", "R25", "Ohm", "1.92", "0.96"},
+                {"持续电流@100°C", "Icn", "Arms", "3.8", "1.9"},
+                {"峰值电流", "Ipk", "Arms", "12.2", "6.1"},
+                {"最高线圈温度", "Tmax", "C", "100", "100"},
+                {"热耗散常数", "Kth", "W/C", "0.715", "0.715"},
+                {"最高母线电压", "Ubus", "Vdc", "600", "600"},
+                {"最高转速@峰值转矩", "Nmax", "rpm", "1700", "1700"},
+                {"最高转速@持续转矩", "Nmax", "rpm", "2000", "2000"}});
+    }
+
+    /** 同上，但参数行由调用方给（用于造「缺必填」的样册）。 */
+    private byte[] torqueCatalogPdf(String[][] rows) throws Exception {
         try (PDDocument doc = new PDDocument();
              ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             PDPage page = new PDPage(PDRectangle.A4);
@@ -236,19 +298,6 @@ class ImportApiTest {
                 put(cs, font, 200, 730, "单位");
                 put(cs, font, 250, 730, "串联");
                 put(cs, font, 300, 730, "并联");
-                String[][] rows = {
-                        {"持续转矩@100°C", "Tcn", "Nm", "3.4", "1.7"},
-                        {"峰值转矩", "Tpk", "Nm", "10.0", "5.0"},
-                        {"转矩常数", "Kt", "Nm/Arms", "3.0", "1.5"},
-                        {"反电势常数", "Ke", "Vpeak/rpm", "0.26", "0.13"},
-                        {"相间电阻", "R25", "Ohm", "1.92", "0.96"},
-                        {"持续电流@100°C", "Icn", "Arms", "3.8", "1.9"},
-                        {"峰值电流", "Ipk", "Arms", "12.2", "6.1"},
-                        {"最高线圈温度", "Tmax", "C", "100", "100"},
-                        {"热耗散常数", "Kth", "W/C", "0.715", "0.715"},
-                        {"最高母线电压", "Ubus", "Vdc", "600", "600"},
-                        {"最高转速@峰值转矩", "Nmax", "rpm", "1700", "1700"},
-                        {"最高转速@持续转矩", "Nmax", "rpm", "2000", "2000"}};
                 int y = 716;
                 for (String[] row : rows) {
                     put(cs, font, 60, y, row[0]);

@@ -4,9 +4,6 @@ import com.motorsizer.app.common.BusinessException;
 import com.motorsizer.app.common.ErrorCode;
 import com.motorsizer.app.common.FieldError;
 import com.motorsizer.app.dto.CalculationRequest;
-import com.motorsizer.domain.catalog.MotorCatalogTemplates;
-import com.motorsizer.domain.catalog.MotorType;
-import com.motorsizer.domain.catalog.MotorTypeTemplate;
 import com.motorsizer.domain.model.AxisKind;
 import com.motorsizer.domain.model.CurveShape;
 import com.motorsizer.domain.model.MotionMode;
@@ -307,13 +304,10 @@ final class CalculationRequestValidator {
             allowed.addAll(MotorSeries.forAxis(axis));
             return allowed;
         }
-        List<MotorType> types = axis == AxisKind.LINEAR
-                ? List.of(MotorType.LINEAR, MotorType.COIL)
-                : List.of(MotorType.TORQUE);
-        for (MotorType type : types) {
-            MotorTypeTemplate template = MotorCatalogTemplates.of(type);
-            allowed.addAll(template.coolings());
-        }
+        // 第 69 轮：模板里的冷却选项是「普通/气冷/水冷」，而界面上的「结构」筛选把「普通」
+        // 呈现为「自然冷却」，两者由 MotorCooling 换算；这里直接放行三个对外值，避免
+        // 前端发「自然冷却」被模板词表挡掉。
+        allowed.addAll(MotorCooling.OPTIONS);
         return allowed;
     }
 
