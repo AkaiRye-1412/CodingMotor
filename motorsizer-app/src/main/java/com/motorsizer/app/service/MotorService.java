@@ -166,6 +166,24 @@ public class MotorService {
         return motor.getId();
     }
 
+    // ---------------------------------------------------------------- 主键查询
+
+    /**
+     * 按主键（型号名 + 配置名）取电机 id；不存在返回 {@code null}。
+     *
+     * <p>供样册入库判断「库里已有 → 覆盖」用（06 §6.1）。只读，不改变写库路径：
+     * 写入仍必须经 {@link #create} / {@link #update}，校验与事务不外溢。
+     */
+    public Long findId(String modelName, String configName) {
+        if (!hasText(modelName) || !hasText(configName)) {
+            return null;
+        }
+        MotorEntity motor = motorMapper.selectOne(new QueryWrapper<MotorEntity>()
+                .eq("model_name", modelName.trim())
+                .eq("config_name", configName.trim()));
+        return motor == null ? null : motor.getId();
+    }
+
     // ---------------------------------------------------------------- C4 编辑
 
     @Transactional
@@ -191,6 +209,22 @@ public class MotorService {
         updateSpec(validated.type(), id, validated.spec(), now);
     }
 
+    // ---------------------------------------------------------------- 清空数据库
+
+    /**
+     * 清空电机库全部数据（4 张表）。先删三张规格表，再删主表；
+     * 无物理外键，「类型 ↔ 规格表」一致性由本层保证。事务内整体回滚。
+     *
+     * @return 清空的主表记录数
+     */
+    @Transactional
+    public int clearAll() {
+        linearSpecMapper.delete(null);
+        torqueSpecMapper.delete(null);
+        coilSpecMapper.delete(null);
+        return motorMapper.delete(null);
+    }
+
     // ---------------------------------------------------------------- S3 计算池
 
     /**
@@ -205,9 +239,9 @@ public class MotorService {
 
         QueryWrapper<MotorEntity> wrapper = new QueryWrapper<>();
         wrapper.in("motor_type", typeCodes);
-        if (structures != null && !structures.isEmpty()) {
-            wrapper.in("structure", structures);
-        }
+        // 第 67/68 轮：两个页签的 structures 都是「系列」前缀，无法用 SQL 的 in 表达式
+        // 表达（含「其他」的排除法），下放到内存按型号名匹配。
+        boolean seriesFilter = structures != null && !structures.isEmpty();
         if (coolings != null && !coolings.isEmpty()) {
             wrapper.in("cooling", coolings);
         }
@@ -217,7 +251,15 @@ public class MotorService {
         if (motors.isEmpty()) {
             return List.of();
         }
-        return assembleCalculationMotors(motors);
+        List<CalculationMotor> assembled = assembleCalculationMotors(motors);
+        if (!seriesFilter) {
+            return assembled;
+        }
+        List<String> known = MotorSeries.forAxis(axis);
+        return assembled.stream()
+                .filter(motor -> structures.stream()
+                        .anyMatch(s -> MotorSeries.matches(motor.modelName(), s, known)))
+                .toList();
     }
 
     /** 按 id 取单台电机（用于 selectedMotorId）；不存在抛 404。 */

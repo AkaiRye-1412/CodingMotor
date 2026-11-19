@@ -228,7 +228,7 @@ public class CalculationService {
             MotionCurve curve) {
 
         boolean excludedByFilter =
-                (!input.structures().isEmpty() && !input.structures().contains(motor.structure()))
+                excludedByStructureFilter(input, motor)
                         || (!input.coolings().isEmpty() && !input.coolings().contains(motor.cooling()));
         if (excludedByFilter) {
             return "被当前结构/冷却筛选排除";
@@ -246,6 +246,21 @@ public class CalculationService {
             return "未通过准入：" + String.join("；", evaluation.reasons());
         }
         return null;
+    }
+
+    /**
+     * 系列筛选是否排除该电机。
+     *
+     * <p>第 67/68 轮：两个页签的 {@code structures} 都是「系列」前缀，按型号名匹配；
+     * 「其他」采用排除法（不以该轴任一已知前缀开头）。
+     */
+    private boolean excludedByStructureFilter(CalculationInput input, CalculationMotor motor) {
+        if (input.structures().isEmpty()) {
+            return false;
+        }
+        List<String> known = MotorSeries.forAxis(input.axis());
+        return input.structures().stream()
+                .noneMatch(s -> MotorSeries.matches(motor.modelName(), s, known));
     }
 
     private List<CalculationResponse.MotorParameter> parameters(CalculationMotor motor) {

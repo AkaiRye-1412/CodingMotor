@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { Document, Upload } from '@element-plus/icons-vue'
+import { Delete, Document, Upload } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { useProjectStore } from '@/stores/project'
+import { clearAllMotors } from '@/api/motor'
 import type { AxisKind } from '@/types/domain'
 import MotorEntryDialog from '@/dialogs/MotorEntryDialog.vue'
 import ReportDialog from '@/dialogs/ReportDialog.vue'
@@ -17,6 +19,35 @@ const tabs: Array<{ kind: AxisKind; label: string }> = [
 
 const entryVisible = ref(false)
 const reportVisible = ref(false)
+const clearing = ref(false)
+
+/** 清空数据库：二次确认后才执行，成功后刷新页面回到干净状态。 */
+async function confirmClearAll() {
+  try {
+    await ElMessageBox.confirm(
+      '此操作将删除电机库中的全部电机数据，且无法恢复。确定继续吗？',
+      '清空数据库',
+      {
+        confirmButtonText: '确认清空',
+        cancelButtonText: '取消',
+        type: 'warning',
+      },
+    )
+  } catch {
+    return
+  }
+
+  clearing.value = true
+  try {
+    await clearAllMotors()
+    ElMessage.success('数据库已清空')
+    window.location.reload()
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : '清空失败，请重试')
+  } finally {
+    clearing.value = false
+  }
+}
 </script>
 
 <template>
@@ -58,6 +89,16 @@ const reportVisible = ref(false)
     </div>
 
     <div class="topbar-actions">
+      <el-button
+        type="danger"
+        plain
+        :icon="Delete"
+        size="small"
+        :loading="clearing"
+        @click="confirmClearAll"
+      >
+        清空数据库
+      </el-button>
       <el-button type="primary" :icon="Upload" size="small" @click="entryVisible = true">
         导入电机参数
       </el-button>

@@ -17,9 +17,10 @@ class MotorCatalogTemplatesTest {
 
     @Test
     void requiredCountsMatchDatabaseNotNullColumns() {
-        // schema.sql 的 NOT NULL 数：直线 10 / 力矩 12 / 音圈 10（R13 漂移防线）
+        // schema.sql 的 NOT NULL 数：直线 10 / 力矩 10 / 音圈 10（R13 漂移防线）
+        // 力矩第 66 轮由 12 降为 10：双转速阈值改为选填，规格表对应列也已放开
         assertThat(MotorCatalogTemplates.of(MotorType.LINEAR).requiredKeys()).hasSize(10);
-        assertThat(MotorCatalogTemplates.of(MotorType.TORQUE).requiredKeys()).hasSize(12);
+        assertThat(MotorCatalogTemplates.of(MotorType.TORQUE).requiredKeys()).hasSize(10);
         assertThat(MotorCatalogTemplates.of(MotorType.COIL).requiredKeys()).hasSize(10);
     }
 
@@ -61,16 +62,14 @@ class MotorCatalogTemplatesTest {
         }
     }
 
+    /** 第 66 轮：三套模板的「最高速度 / 最高转速」一律选填，缺项只跳过准入②。 */
     @Test
-    void torqueRequiresBothSpeedThresholdsWhileOthersDoNot() {
-        Set<String> torqueRequired = new HashSet<>(
-                MotorCatalogTemplates.of(MotorType.TORQUE).requiredKeys());
-        assertThat(torqueRequired).contains("maxSpeedPeak", "maxSpeedCont");
-
-        assertThat(MotorCatalogTemplates.of(MotorType.LINEAR).requiredKeys())
-                .doesNotContain("maxSpeedPeak", "maxSpeedCont");
-        assertThat(MotorCatalogTemplates.of(MotorType.COIL).requiredKeys())
-                .doesNotContain("maxSpeedPeak", "maxSpeedCont");
+    void noTemplateRequiresSpeedThresholds() {
+        for (MotorType type : MotorType.values()) {
+            assertThat(MotorCatalogTemplates.of(type).requiredKeys())
+                    .as("%s 的最高速度阈值不应是必填", type)
+                    .doesNotContain("maxSpeedPeak", "maxSpeedCont");
+        }
     }
 
     @Test

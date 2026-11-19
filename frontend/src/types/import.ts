@@ -50,3 +50,29 @@ export interface ImportJobSummary {
   createdAt: string
   remainingDays: number
 }
+
+/** 入库单台结果（06 §6.1）。 */
+export type CommitStatus = 'CREATED' | 'UPDATED' | 'SKIPPED' | 'FAILED'
+
+export interface ImportCommitItem {
+  modelName: string
+  configName: string
+  motorType: string
+  structure: string
+  cooling: string
+  status: CommitStatus
+  motorId: number | null
+  message: string
+}
+
+/** 一次「入库」的结果汇总。 */
+export interface ImportCommitResult {
+  jobId: string
+  fileName: string
+  total: number
+  created: number
+  updated: number
+  skipped: number
+  failed: number
+  items: ImportCommitItem[]
+}

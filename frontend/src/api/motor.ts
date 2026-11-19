@@ -27,3 +27,8 @@ export function createMotor(payload: MotorUpsertRequest): Promise<CreatedMotor> 
 export function updateMotor(motorId: number, payload: MotorUpsertRequest): Promise<void> {
   return request<void>({ url: `/motors/${motorId}`, method: 'PUT', data: payload })
 }
+
+/** 清空电机库全部数据（第 69 轮）。 */
+export function clearAllMotors(): Promise<void> {
+  return request<void>({ url: '/motors', method: 'DELETE' })
+}

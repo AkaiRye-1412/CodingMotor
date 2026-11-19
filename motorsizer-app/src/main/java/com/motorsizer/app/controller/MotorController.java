@@ -9,6 +9,7 @@ import com.motorsizer.app.dto.MotorUpsertRequest;
 import com.motorsizer.app.service.MotorService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -58,5 +59,12 @@ public class MotorController {
                                     @RequestBody MotorUpsertRequest request) {
         motorService.update(id, request);
         return ApiResponse.<Void>ok("已更新", null);
+    }
+
+    /** 清空电机库全部数据（第 69 轮）。前端需二次确认后才调用。 */
+    @DeleteMapping
+    public ApiResponse<Void> clearAll() {
+        int removed = motorService.clearAll();
+        return ApiResponse.ok("已清空 " + removed + " 台电机", null);
     }
 }

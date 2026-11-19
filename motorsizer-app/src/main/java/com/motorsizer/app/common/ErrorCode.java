@@ -20,7 +20,9 @@ public enum ErrorCode {
 
     IMPORT_JOB_NOT_FOUND(HttpStatus.NOT_FOUND, "导入任务不存在或已清理"),
     IMPORT_FILE_REJECTED(HttpStatus.BAD_REQUEST, "请上传一个可读取的 PDF 文件"),
-    IMPORT_CONVERT_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "PDF 解析失败，未能生成 Excel");
+    IMPORT_CONVERT_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "PDF 解析失败，未能生成 Excel"),
+    IMPORT_NOTHING_TO_COMMIT(HttpStatus.BAD_REQUEST, "Excel 里没有可入库的电机"),
+    IMPORT_COMMIT_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "入库失败，未能读取 Excel");
 
     private final HttpStatus httpStatus;
     private final String defaultMessage;

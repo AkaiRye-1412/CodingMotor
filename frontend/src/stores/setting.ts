@@ -15,21 +15,18 @@ export const useSettingStore = defineStore('setting', {
     marginUpperPercent: 300,
     marginUpperEnabled: false,
     filterStructures: [] as string[],
-    filterCoolings: [] as string[],
   }),
   actions: {
-    toggleFilter(group: 'structure' | 'cooling', value: string) {
-      const target = group === 'structure' ? this.filterStructures : this.filterCoolings
-      const index = target.indexOf(value)
+    toggleFilter(value: string) {
+      const index = this.filterStructures.indexOf(value)
       if (index >= 0) {
-        target.splice(index, 1)
+        this.filterStructures.splice(index, 1)
       } else {
-        target.push(value)
+        this.filterStructures.push(value)
       }
     },
     clearFilters() {
       this.filterStructures = []
-      this.filterCoolings = []
     },
   },
 })

@@ -634,13 +634,19 @@ public class CatalogParser {
             cols.add(new Column("sym", lo, mid));
             lo = mid;
         }
-        double firstCfgLeft = configs.size() > 1
-                ? configs.get(0).cx() - (configs.get(1).cx() - configs.get(0).cx()) / 2
-                // OCR 页单列时用「单位列右缘」与「值列左缘」的中点：表头文字常与右对齐的数值重叠
-                // （图纸里 Parallel 与 15 的 x 几乎一致），按中心线切会把数值判进单位列。
-                : (tightUnitColumn && unit != null
-                        ? (unit.x1() + configs.get(0).x0()) / 2
-                        : configs.get(0).cx() - 10);
+        double firstCfgLeft;
+        if (tightUnitColumn && unit != null) {
+            // OCR 页一律用「单位右缘」与「第一值列左缘」的中点，多列也一样：
+            // 渲染图里表头列距并不均匀（Unit→B 比 B→D 窄得多），按等间距外推会把边界
+            // 推到单位文字中间——短单位（N、Ω）有一半越过边界，就被「贴边跳列」推进值列，
+            // 变成 N3489 / Ω3.0（AKM200-A-B4-W 图纸）。单列时同样成立：表头文字常与
+            // 右对齐的数值重叠（图纸里 Parallel 与 15 的 x 几乎一致），按中心线切会把数值判进单位列。
+            firstCfgLeft = (unit.x1() + configs.get(0).x0()) / 2;
+        } else if (configs.size() > 1) {
+            firstCfgLeft = configs.get(0).cx() - (configs.get(1).cx() - configs.get(0).cx()) / 2;
+        } else {
+            firstCfgLeft = configs.get(0).cx() - 10;
+        }
         if (unit != null) {
             double hi = Math.max(firstCfgLeft, lo + 1);
             cols.add(new Column("unit", lo, hi));

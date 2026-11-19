@@ -2,8 +2,9 @@
 import { computed, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { UploadFile, UploadUserFile } from 'element-plus'
-import { Upload as UploadIcon, Download, Document, Delete, Back } from '@element-plus/icons-vue'
+import { Upload as UploadIcon, Download, Document, Delete, Back, Box, Loading } from '@element-plus/icons-vue'
 import {
+  commitImportJob,
   createImportJob,
   deleteImportJob,
   exportImportJob,
@@ -11,18 +12,22 @@ import {
   listImportJobs,
 } from '@/api/import'
 import { ApiError } from '@/types/api'
-import type { ImportJob, ImportJobSummary } from '@/types/import'
+import type { CommitStatus, ImportCommitResult, ImportJob, ImportJobSummary } from '@/types/import'
 
 /**
- * 样册 PDF → Excel（06 v2）：上传 → 生成 → 下载。不做草稿、不做入库。
+ * 样册 PDF → Excel → 入库（06 v2）：上传 → 生成并下载 → 入库。
+ *
+ * <p>不做草稿与逐条核对：Excel 是唯一数据源，入库按「型号名 + 配置名」覆盖同名电机。
  */
 const visible = defineModel<boolean>({ required: true })
 
-type Step = 1 | 2
+type Step = 1 | 2 | 3
 const step = ref<Step>(1)
 const fileList = ref<UploadUserFile[]>([])
 const job = ref<ImportJob | null>(null)
 const busy = ref(false)
+/** 入库结果（第 3 步的唯一数据源）；为空表示还没入过库。 */
+const commitResult = ref<ImportCommitResult | null>(null)
 const historyJobs = ref<ImportJobSummary[]>([])
 /** 结果页「再次上传」用的隐藏文件选择器（不复用 el-upload，避免两套状态互相干扰）。 */
 const fileInput = ref<HTMLInputElement | null>(null)
@@ -51,20 +56,26 @@ function reset() {
   step.value = 1
   fileList.value = []
   job.value = null
+  commitResult.value = null
   busy.value = false
 }
 
 /**
- * 结果页点击步骤条第 1 步 = 回到上传页。这是「返回」最自然的位置，不另设按钮：
- * 结果页是终态，返回不撤销任何东西（任务与 Excel 已在服务端生成）。
+ * 步骤条可点返回：第 1 步回上传页（清空本次任务）、第 2 步回结果页（保留任务与 Excel）。
  * 用事件委托而非给 el-step 绑 click——不依赖组件内部 attrs 透传，Element Plus 升级也不会失效。
  */
 function onStepsClick(event: MouseEvent) {
-  if (step.value !== 2 || busy.value) return
+  if (busy.value) return
   const target = event.target as HTMLElement | null
-  const stepEl = target?.closest('.el-step')
-  if (!stepEl || stepEl.previousElementSibling !== null) return   // 只认第 1 步
-  reset()
+  const stepEl = target?.closest('.el-step') as HTMLElement | null
+  if (!stepEl || !stepEl.parentElement) return
+  const index = Array.from(stepEl.parentElement.children).indexOf(stepEl) + 1
+  if (index >= step.value) return                  // 只允许往前退，点当前步骤无动作
+  if (index === 1) {
+    reset()
+    return
+  }
+  step.value = index as Step
 }
 
 function onExceed(files: File[]) {
@@ -126,6 +137,7 @@ async function convertFile(file: File) {
   busy.value = true
   try {
     job.value = await createImportJob(file)
+    commitResult.value = null            // 新任务 = 之前的入库结果作废
     step.value = 2
     if (job.value.status === 'READY') {
       ElMessage.success('Excel 已生成，可下载')
@@ -156,12 +168,61 @@ async function resume(jobId: string) {
   busy.value = true
   try {
     job.value = await getImportJob(jobId)
+    commitResult.value = null
     step.value = 2
   } catch (error) {
     ElMessage.error(error instanceof ApiError ? error.message : '任务已清理，请重新上传')
   } finally {
     busy.value = false
   }
+}
+
+/**
+ * 入库（第 3 步）：把 Excel 里的电机写进电机库，主键相同即整体覆盖。
+ *
+ * <p>点下就切到第 3 步（先给「正在入库」的反馈，百台电机也就一两秒），失败退回第 2 步保留现场。
+ */
+async function commit() {
+  const jobId = job.value?.jobId
+  if (!jobId || busy.value) return
+  busy.value = true
+  commitResult.value = null
+  step.value = 3
+  try {
+    const result = await commitImportJob(jobId)
+    commitResult.value = result
+    const written = result.created + result.updated
+    if (written > 0) {
+      ElMessage.success(`已入库 ${written} 台（新增 ${result.created} / 覆盖 ${result.updated}）`)
+    } else {
+      ElMessage.warning('没有写入任何电机，请查看跳过原因')
+    }
+  } catch (error) {
+    step.value = 2
+    ElMessage.error(error instanceof ApiError ? error.message : '入库失败')
+  } finally {
+    busy.value = false
+  }
+}
+
+const TYPE_LABEL: Record<string, string> = { linear: '直线', torque: '力矩', coil: '音圈' }
+
+/** 第 3 步 → 第 2 步：回看 Excel 结果，入库结果保留（再点「入库」会重新覆盖一遍）。 */
+function backToResult() {
+  step.value = 2
+}
+
+function commitLabel(status: CommitStatus): string {
+  return ({ CREATED: '新增', UPDATED: '覆盖', SKIPPED: '跳过', FAILED: '失败' } as Record<
+    CommitStatus,
+    string
+  >)[status]
+}
+
+function commitTagType(status: CommitStatus): 'success' | 'primary' | 'warning' | 'danger' {
+  return ({ CREATED: 'success', UPDATED: 'primary', SKIPPED: 'warning', FAILED: 'danger' } as const)[
+    status
+  ]
 }
 
 async function removeJob(jobId: string) {
@@ -194,25 +255,32 @@ function statusType(status: string): 'success' | 'warning' | 'danger' {
 <template>
   <el-dialog
     v-model="visible"
-    title="样册识别（PDF → Excel）"
+    title="样册识别（PDF → Excel → 入库）"
     width="820px"
     append-to-body
     @open="loadHistory"
     @closed="reset"
   >
-    <div class="import-steps-wrap" :class="{ 'can-back': step === 2 }" @click="onStepsClick">
+    <div class="import-steps-wrap" :class="{ 'can-back': step > 1 }" @click="onStepsClick">
       <el-steps :active="step - 1" finish-status="success" class="import-steps">
         <el-step>
           <template #title>
-            <!-- 结果页把第 1 步做成明确的链接样式：← 上传样册 PDF（可点击返回） -->
-            <span v-if="step === 2" class="step-back-title">
-              <el-icon><back /></el-icon>
+            <!-- 已走过的步骤做成链接样式：← 上传样册 PDF（可点击返回） -->
+            <span :class="step > 1 ? 'step-back-title' : ''">
+              <el-icon v-if="step > 1"><back /></el-icon>
               <span>上传样册 PDF</span>
             </span>
-            <span v-else>上传样册 PDF</span>
           </template>
         </el-step>
-        <el-step title="生成并下载 Excel" />
+        <el-step>
+          <template #title>
+            <span :class="step > 2 ? 'step-back-title' : ''">
+              <el-icon v-if="step > 2"><back /></el-icon>
+              <span>生成并下载 Excel</span>
+            </span>
+          </template>
+        </el-step>
+        <el-step title="入库" />
       </el-steps>
     </div>
 
@@ -222,8 +290,8 @@ function statusType(status: string): 'success' | 'warning' | 'danger' {
         type="info"
         :closable="false"
         show-icon
-        title="只做一件事：把样册里的参数表转成 Excel"
-        description="按表头「符号 / 单位 / 串联 / 并联」定位表格，按坐标还原列与分节；参数表被贴成图片（或整页扫描）时自动走 OCR，识别出的页会在结果里标出，请重点核对。"
+        title="把样册里的参数表转成 Excel，核对后可一键入库"
+        description="按表头「符号 / 单位 / 串联 / 并联」定位表格，按坐标还原列与分节；参数表被贴成图片（或整页扫描）时自动走 OCR，识别出的页会在结果里标出，请重点核对。入库只取 K2 模板里的必填参数，缺少必填的电机不会入库。"
       />
       <el-upload
         drag
@@ -297,7 +365,12 @@ function statusType(status: string): 'success' | 'warning' | 'danger' {
           <span>{{ job.files[0]?.name }}</span>
           <el-tag :type="statusType(job.status)" size="small">{{ statusLabel(job.status) }}</el-tag>
         </div>
-        <el-button type="primary" :icon="Download" @click="download()">下载 Excel</el-button>
+        <div class="head-actions">
+          <el-button :icon="Download" @click="download()">下载 Excel</el-button>
+          <el-button type="primary" :icon="Box" :disabled="!isReady" @click="commit">
+            入库
+          </el-button>
+        </div>
       </div>
 
       <el-descriptions :column="3" border size="small" class="result-stats">
@@ -344,6 +417,62 @@ function statusType(status: string): 'success' | 'warning' | 'danger' {
         </el-button>
       </div>
     </div>
+
+    <!-- 步骤 3：入库 -->
+    <div v-else-if="step === 3" class="step-body">
+      <div v-if="busy" class="commit-loading">
+        <el-icon class="is-loading"><loading /></el-icon>
+        <span>正在把 Excel 里的电机写进电机库…</span>
+      </div>
+
+      <template v-else-if="commitResult">
+        <el-alert
+          :type="commitResult.created + commitResult.updated > 0 ? 'success' : 'warning'"
+          :closable="false"
+          show-icon
+          :title="`共 ${commitResult.total} 台：新增 ${commitResult.created} · 覆盖 ${commitResult.updated} · 跳过 ${commitResult.skipped} · 失败 ${commitResult.failed}`"
+          description="型号名 + 配置名相同的电机被整体覆盖（不是字段级合并）；「跳过」是缺少必填参数的电机，核对样册补齐后可再点一次「入库」。"
+        />
+
+        <el-table :data="commitResult.items" size="small" class="commit-table" max-height="320">
+          <el-table-column label="型号" min-width="170">
+            <template #default="{ row }">
+              <span>{{ row.modelName }}</span>
+              <el-tag v-if="row.configName !== '默认'" size="small" effect="plain" class="cfg-tag">
+                {{ row.configName }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="类型" width="70">
+            <template #default="{ row }">{{ TYPE_LABEL[row.motorType] ?? row.motorType }}</template>
+          </el-table-column>
+          <el-table-column label="结构 / 冷却" width="130">
+            <template #default="{ row }">{{ row.structure }} / {{ row.cooling }}</template>
+          </el-table-column>
+          <el-table-column label="结果" width="82">
+            <template #default="{ row }">
+              <el-tag :type="commitTagType(row.status)" size="small">
+                {{ commitLabel(row.status) }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="说明" min-width="200" show-overflow-tooltip>
+            <template #default="{ row }">{{ row.message }}</template>
+          </el-table-column>
+        </el-table>
+
+        <div class="sheet-note">
+          结构与冷却样册一般不给，按模板默认写入（直线 无铁芯/普通、力矩 有铁芯/普通、音圈 音圈/普通），
+          可在电机库中按实物修改。入库方式记为「识别草稿」，来源文档即该 PDF。
+          计算结果页的候选是上一次计算的快照，<b>重新计算一次</b>才会看到新入库的电机。
+        </div>
+
+        <div class="step-actions">
+          <el-button class="action-back" :icon="Back" @click="backToResult">返回上一步</el-button>
+          <el-button :icon="Download" @click="download()">下载 Excel</el-button>
+        </div>
+      </template>
+    </div>
   </el-dialog>
 </template>
 
@@ -351,8 +480,8 @@ function statusType(status: string): 'success' | 'warning' | 'danger' {
 .import-steps {
   margin-bottom: 16px;
 }
-/* 结果页时第 1 步可点击回退到上传页：手型 + hover 高亮，暗示可点 */
-.can-back :deep(.el-step:first-child) {
+/* 已完成的步骤可点击回退：手型 + hover 高亮，暗示可点 */
+.can-back :deep(.el-step.is-finish) {
   cursor: pointer;
 }
 /* 标题做成链接样式（← 图标 + 主色 + 虚线下划线），比单纯 hover 更容易看出可以返回 */
@@ -365,7 +494,7 @@ function statusType(status: string): 'success' | 'warning' | 'danger' {
   text-decoration-style: dashed;
   text-underline-offset: 4px;
 }
-.can-back :deep(.el-step:first-child:hover .step-back-title) {
+.can-back :deep(.el-step:hover .step-back-title) {
   color: var(--el-color-primary-dark-2);
   text-decoration-style: solid;
 }
@@ -401,6 +530,25 @@ function statusType(status: string): 'success' | 'warning' | 'danger' {
   align-items: center;
   justify-content: space-between;
   margin: 14px 0 10px;
+}
+.head-actions {
+  display: flex;
+  gap: 8px;
+}
+.commit-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 48px 0;
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
+}
+.commit-table {
+  margin: 12px 0;
+}
+.cfg-tag {
+  margin-left: 6px;
 }
 .result-file {
   display: flex;

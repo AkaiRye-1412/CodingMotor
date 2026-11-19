@@ -258,13 +258,62 @@ class CalculationApiTest {
         assertThat(candidates.get(1).path("overSized").asBoolean()).isTrue();
     }
 
+    /**
+     * 第 67 轮：旋转页「结构」筛选替换为「系列」，按型号名前缀过滤。
+     * 勾选 ADR 时只列出 ADR 开头的力矩型号，ACD 与无前缀型号被排除。
+     */
+    @Test
+    void rotaryFiltersByModelSeriesPrefix() throws Exception {
+        seedTorque("ADR175-A102-S", 4.5, 13.5);
+        seedTorque("ADR220-87-S", 5.0, 15.0);
+        seedTorque("ACD85-P-15-Y", 4.5, 13.5);
+        seedTorque("XYZ-99", 4.5, 13.5);
+
+        Map<String, Object> body = rotaryRequest();
+        body.put("filters", Map.of("structures", List.of("ADR"), "coolings", List.of()));
+
+        JsonNode candidates = call(body, 200).path("data").path("candidates");
+        assertThat(candidates).hasSize(2);
+        assertThat(candidates.get(0).path("modelName").asText()).isEqualTo("ADR175-A102-S");
+        assertThat(candidates.get(1).path("modelName").asText()).isEqualTo("ADR220-87-S");
+    }
+
+    /** 第 67 轮：「其他」采用排除法——型号名不以任一已知前缀开头即归入。 */
+    @Test
+    void rotaryOtherSeriesExcludesKnownPrefixes() throws Exception {
+        seedTorque("ADR175-A102-S", 4.5, 13.5);
+        seedTorque("XYZ-99", 4.5, 13.5);
+
+        Map<String, Object> body = rotaryRequest();
+        body.put("filters", Map.of("structures", List.of("其他"), "coolings", List.of()));
+
+        JsonNode candidates = call(body, 200).path("data").path("candidates");
+        assertThat(candidates).hasSize(1);
+        assertThat(candidates.get(0).path("modelName").asText()).isEqualTo("XYZ-99");
+    }
+
+    /** 第 68 轮：直线页「结构」筛选同样替换为「系列」，按型号名前缀过滤。 */
+    @Test
+    void linearFiltersByModelSeriesPrefix() throws Exception {
+        seedLinear("ACM100-A", 12, 48);
+        seedLinear("AKM200-B4", 12, 48);
+        seedLinear("CALC-L1", 12, 48);
+
+        Map<String, Object> body = linearRequest();
+        body.put("filters", Map.of("structures", List.of("ACM"), "coolings", List.of()));
+
+        JsonNode candidates = call(body, 200).path("data").path("candidates");
+        assertThat(candidates).hasSize(1);
+        assertThat(candidates.get(0).path("modelName").asText()).isEqualTo("ACM100-A");
+    }
+
     @Test
     void filteredOutSelectedMotorKeepsAppliedValues() throws Exception {
         Long motorId = seedLinear("CALC-L1", 12, 48);
 
         Map<String, Object> body = linearRequest();
         body.put("selectedMotorId", motorId);
-        body.put("filters", Map.of("structures", List.of("有铁芯"), "coolings", List.of()));
+        body.put("filters", Map.of("structures", List.of("ACM"), "coolings", List.of()));
 
         JsonNode selected = call(body, 200).path("data").path("selectedMotor");
         assertThat(selected.path("motorId").asLong()).isEqualTo(motorId);
@@ -289,6 +338,20 @@ class CalculationApiTest {
 
     private Map<String, Object> linearRequest() {
         return baseRequest("linear", "pointToPoint");
+    }
+
+    private Map<String, Object> rotaryRequest() {
+        Map<String, Object> body = baseRequest("rotary", "pointToPoint");
+        Map<String, Object> plan = new LinkedHashMap<>();
+        plan.put("load", 0.05);
+        plan.put("distance", 360.0);
+        plan.put("time", 0.6);
+        plan.put("dwell", 0.0);
+        plan.put("tiltDeg", 90.0);
+        plan.put("ambientTemp", 22.0);
+        plan.put("supplyVoltage", 311.0);
+        body.put("plan", plan);
+        return body;
     }
 
     private Map<String, Object> baseRequest(String axis, String mode) {

@@ -1,6 +1,8 @@
 package com.motorsizer.app.importing;
 
 import com.motorsizer.app.common.ApiResponse;
+import com.motorsizer.app.importing.commit.CatalogCommitService;
+import com.motorsizer.app.importing.commit.ImportCommitResult;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -32,9 +34,11 @@ public class ImportController {
             MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
 
     private final ImportService service;
+    private final CatalogCommitService commitService;
 
-    public ImportController(ImportService service) {
+    public ImportController(ImportService service, CatalogCommitService commitService) {
         this.service = service;
+        this.commitService = commitService;
     }
 
     /** I1 上传 PDF 并生成 Excel。 */
@@ -76,5 +80,17 @@ public class ImportController {
                 .contentType(XLSX)
                 .header(HttpHeaders.CONTENT_DISPOSITION, disposition.toString())
                 .body(file.bytes());
+    }
+
+    /**
+     * I6 入库：把该任务的 Excel 里的电机写进电机库（06 §6.1）。
+     *
+     * <p>主键（型号名 + 配置名）已存在时整体覆盖，不存在则新增；必填参数不全的跳过并回报原因。
+     * 一次请求内逐台独立处理，任何一台失败都不影响其他台。
+     */
+    @PostMapping("/{jobId}/commit")
+    public ApiResponse<ImportCommitResult> commit(@PathVariable String jobId) throws IOException {
+        ImportCommitResult result = commitService.commit(jobId);
+        return ApiResponse.ok(result.summary(), result);
     }
 }

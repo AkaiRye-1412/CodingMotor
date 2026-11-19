@@ -15,6 +15,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 import static org.hamcrest.Matchers.hasItem;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -117,22 +118,25 @@ class MotorApiTest {
                 .andExpect(jsonPath("$.data.errors[*].field", hasItem("spec.kth")));
     }
 
+    /**
+     * 第 66 轮：力矩的双转速阈值改为选填——样册口径不统一（AXD 写「@ 持续扭矩（600V）」、
+     * AXM 只给一行「最高转速」），按必填会让整批型号在入库预览里「跳过」。
+     * 缺此项只跳过准入②并注明「未校核」，不再拒绝保存。
+     */
     @Test
-    void torqueWithoutSpeedThresholdsIsRejected() throws Exception {
-        Map<String, Object> payload = torquePayload("TPL-TORQUE-MISSING");
+    void torqueWithoutSpeedThresholdsIsAcceptedAndSkippedInAdmission() throws Exception {
+        Map<String, Object> payload = torquePayload("TPL-TORQUE-NOSPEED");
         @SuppressWarnings("unchecked")
         Map<String, Object> spec = (Map<String, Object>) payload.get("spec");
         spec.remove("maxSpeedPeak");
         spec.remove("maxSpeedCont");
 
-        mockMvc.perform(post("/api/motors")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .characterEncoding(StandardCharsets.UTF_8)
-                        .content(objectMapper.writeValueAsString(payload)))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("MOTOR_SPEC_REQUIRED"))
-                .andExpect(jsonPath("$.data.errors[*].field", hasItem("spec.maxSpeedPeak")))
-                .andExpect(jsonPath("$.data.errors[*].field", hasItem("spec.maxSpeedCont")));
+        long id = createMotor(payload);
+
+        mockMvc.perform(get("/api/motors/{id}", id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.spec.maxSpeedPeak").doesNotExist())
+                .andExpect(jsonPath("$.data.spec.maxSpeedCont").doesNotExist());
     }
 
     @Test
@@ -241,6 +245,21 @@ class MotorApiTest {
                 .andExpect(jsonPath("$.data.page").value(1))
                 .andExpect(jsonPath("$.data.items.length()").value(1))
                 .andExpect(jsonPath("$.data.items[0].motorId").value(isNumber()));
+    }
+
+    @Test
+    void clearAllRemovesEveryMotorAcrossTypes() throws Exception {
+        createMotor(linearPayload("TPL-CLEAR-L1"));
+        createMotor(coilPayload("TPL-CLEAR-C1", "0.05"));
+        createMotor(torquePayload("TPL-CLEAR-T1"));
+
+        mockMvc.perform(delete("/api/motors"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value("OK"));
+
+        mockMvc.perform(get("/api/motors").param("page", "1").param("size", "100"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items.length()").value(0));
     }
 
     // ---------------------------------------------------------------- 夹具

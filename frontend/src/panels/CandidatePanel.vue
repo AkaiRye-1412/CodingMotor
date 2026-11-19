@@ -13,48 +13,20 @@ const setting = useSettingStore()
 const motorStore = useMotorStore()
 const { result, isCalculating } = useCalculation()
 
-const axisTypes = computed<MotorTypeCode[]>(() =>
-  project.axisKind === 'linear' ? ['linear', 'coil'] : ['torque'],
-)
+const isRotary = computed(() => project.axisKind !== 'linear')
 
-const typeLabels = computed(() => {
-  const templates = motorStore.templates
-  if (!templates) return [] as string[]
-  return templates.types.map((type) => templates.templates[type].label)
-})
+// 第 67/68 轮：两个页签都把「结构」筛选替换为「系列」（型号名前缀）。
+const rotarySeries = ['ADR', 'ACD', 'AXD', 'ACW', 'ACR', 'AMR', 'AXM', '其他']
+const linearSeries = ['ACM', 'AUM', 'ALM', 'AJM', 'AQM', 'AKM', 'AKH', 'AWM', 'AVM', 'AVA', '其他']
 
-const structureOptions = computed(() => {
-  const templates = motorStore.templates
-  if (!templates) return [] as string[]
-  const values = new Set<string>()
-  axisTypes.value.forEach((type) => {
-    templates.templates[type].structures.forEach((value) => values.add(value))
-  })
-  // 原型第 58 轮：结构过滤不再展示类型名与「超声波力矩电机」
-  return [...values].filter(
-    (value) => !typeLabels.value.includes(value) && value !== '超声波力矩电机',
-  )
-})
-
-const coolingOptions = computed(() => {
-  const templates = motorStore.templates
-  if (!templates) return [] as string[]
-  const values = new Set<string>()
-  axisTypes.value.forEach((type) => {
-    templates.templates[type].coolings.forEach((value) => values.add(value))
-  })
-  return [...values]
-})
+const structureOptions = computed(() => (isRotary.value ? rotarySeries : linearSeries))
 
 const candidates = computed(() => {
   const value = result.value
   return value && value.stage.ok ? (value.candidates ?? []) : []
 })
 
-const isActive = (group: 'structure' | 'cooling', value: string): boolean => {
-  const target = group === 'structure' ? setting.filterStructures : setting.filterCoolings
-  return target.includes(value)
-}
+const isActive = (value: string): boolean => setting.filterStructures.includes(value)
 
 const typeLabel = (type: string): string => {
   const templates = motorStore.templates
@@ -74,29 +46,15 @@ function selectCandidate(motorId: number): void {
   <div class="candidate-panel" :class="{ 'is-calculating': isCalculating }">
     <div class="candidate-filters">
       <div class="filter-group">
-        <span class="filter-title">结构</span>
+        <span class="filter-title">系列</span>
         <el-tag
           v-for="value in structureOptions"
           :key="value"
-          :type="isActive('structure', value) ? 'primary' : 'info'"
-          :effect="isActive('structure', value) ? 'dark' : 'plain'"
+          :type="isActive(value) ? 'primary' : 'info'"
+          :effect="isActive(value) ? 'dark' : 'plain'"
           size="small"
           class="filter-chip"
-          @click="setting.toggleFilter('structure', value)"
-        >
-          {{ value }}
-        </el-tag>
-      </div>
-      <div class="filter-group">
-        <span class="filter-title">冷却</span>
-        <el-tag
-          v-for="value in coolingOptions"
-          :key="value"
-          :type="isActive('cooling', value) ? 'primary' : 'info'"
-          :effect="isActive('cooling', value) ? 'dark' : 'plain'"
-          size="small"
-          class="filter-chip"
-          @click="setting.toggleFilter('cooling', value)"
+          @click="setting.toggleFilter(value)"
         >
           {{ value }}
         </el-tag>
@@ -115,23 +73,17 @@ function selectCandidate(motorId: number): void {
         :class="['candidate-item', { selected: motorStore.selectedMotorId === candidate.motorId }]"
         @click="selectCandidate(candidate.motorId)"
       >
-        <el-tooltip
-          :content="candidate.reasons.join('；')"
-          placement="top"
-          :show-after="300"
-        >
-          <div class="candidate-main">
-            <el-tag size="small" type="info" effect="plain">
-              {{ typeLabel(candidate.motorType) }}
-            </el-tag>
-            <span class="candidate-name">
-              {{ modelLabel(candidate.modelName, candidate.configName) }}
-            </span>
-            <el-tag v-if="candidate.overSized" size="small" type="warning" effect="plain">
-              余量过大
-            </el-tag>
-          </div>
-        </el-tooltip>
+        <div class="candidate-main">
+          <el-tag size="small" type="info" effect="plain">
+            {{ typeLabel(candidate.motorType) }}
+          </el-tag>
+          <span class="candidate-name">
+            {{ modelLabel(candidate.modelName, candidate.configName) }}
+          </span>
+          <el-tag v-if="candidate.overSized" size="small" type="warning" effect="plain">
+            余量过大
+          </el-tag>
+        </div>
         <span class="candidate-safety">
           Safety: {{ formatPercent(candidate.headroomRatio * 100, 0) }}
         </span>

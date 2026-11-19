@@ -38,6 +38,31 @@ class ColumnAssignmentTest {
     }
 
     @Test
+    void ocrUnitColumnIsBoundedByItsRightEdgeNotByEvenSpacing() {
+        // AKM200-A-B4-W 第 2 页（OCR 页）的实际表头坐标：Unit 404.9–427.4、B 467.3、D 593.8。
+        // Unit→B 只有 39.9pt，而 B→D 有 126.5pt，列距并不均匀。按 B→D 等间距外推会把单位列
+        // 右界算成 409，正好切在单位 N（403.4–415.0）中间 —— 越过的那半截达到 6/11.6，
+        // 触发「贴边跳列」，短单位整段被判进值列，Excel 里就成了 N3489 / N/Arms218 / Ω3.0。
+        CatalogParser parser = new CatalogParser(new PdfPageScanner());
+        TextLine header = new TextLine(220.0, List.of(
+                TextRun.of("Symbol", 313.7, 351.1, 218.0, 8.0),
+                TextRun.of("Unit", 404.9, 427.4, 218.0, 8.0),
+                TextRun.of("B", 467.3, 477.6, 218.0, 8.0),
+                TextRun.of("D", 593.8, 605.0, 218.0, 8.0)));
+
+        CatalogParser.Columns cols = parser.buildColumns(header, 732.0, true);
+
+        assertThat(cols.of(TextRun.of("N", 403.4, 415.0, 227.0, 8.0)))
+                .as("单字符单位留在单位列")
+                .isEqualTo("unit");
+        assertThat(cols.of(TextRun.of("N/Arms", 404.4, 439.9, 260.8, 8.0))).isEqualTo("unit");
+        assertThat(cols.of(TextRun.of("Ω", 403.9, 415.0, 310.6, 8.0))).isEqualTo("unit");
+        // 两个配置列的值都不能被单位列吃掉
+        assertThat(cols.of(TextRun.of("3489", 468.2, 491.5, 227.0, 8.0))).isEqualTo("v0");
+        assertThat(cols.of(TextRun.of("3489", 595.2, 618.0, 227.0, 8.0))).isEqualTo("v1");
+    }
+
+    @Test
     void rightAlignedShortValueIsNotPushedToTheNextColumn() {
         // Direct Drive 磁吸力：0 右对齐，左缘 205.0 距 v0 右界只有 5.1pt，但它一点都没越界
         CatalogParser.Columns cols = new CatalogParser.Columns(List.of(

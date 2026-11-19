@@ -123,13 +123,13 @@ CREATE INDEX IF NOT EXISTS idx_linear_spec_motor ON motor_linear_spec (motor_id)
 
 -- ----------------------------------------------------------------------------
 -- 表 3：motor_torque_spec —— 力矩（旋转）电机规格（与 motor 1:1）
--- 必填 12 项 NOT NULL：含双转速阈值（力矩样册必填，与直线/音圈不同）
+-- 必填 10 项 NOT NULL；双转速阈值可空（第 66 轮：样册口径不统一，缺项只跳过准入②）
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS motor_torque_spec (
     id                  BIGINT          AUTO_INCREMENT PRIMARY KEY,
     motor_id            BIGINT          NOT NULL COMMENT '逻辑关联 motor.id（规则 R4-2：不建物理外键）',
 
-    -- ===== 性能参数 / 必填 12 项 =====
+    -- ===== 性能参数 / 必填 10 项 =====
     torque_cont         DECIMAL(18,6)   NOT NULL COMMENT '持续转矩 @100°C (Nm)',
     torque_peak         DECIMAL(18,6)   NOT NULL COMMENT '峰值转矩 (Nm)',
     kt                  DECIMAL(18,6)   NOT NULL COMMENT '转矩常数 (Nm/Arms)',
@@ -140,8 +140,8 @@ CREATE TABLE IF NOT EXISTS motor_torque_spec (
     t_max               DECIMAL(18,6)   NOT NULL COMMENT '最高线圈温度 (°C)',
     kth                 DECIMAL(18,6)   NOT NULL COMMENT '热耗散常数 (W/°C)',
     u_bus               DECIMAL(18,6)   NOT NULL COMMENT '最高母线电压 (Vdc)',
-    max_speed_peak      DECIMAL(18,6)   NOT NULL COMMENT '最高转速 @峰值转矩 (rpm) —— 准入②',
-    max_speed_cont      DECIMAL(18,6)   NOT NULL COMMENT '最高转速 @持续转矩 (rpm) —— 准入②',
+    max_speed_peak      DECIMAL(18,6)            COMMENT '最高转速 @峰值转矩 (rpm)；留空只跳过准入②（第 66 轮）',
+    max_speed_cont      DECIMAL(18,6)            COMMENT '最高转速 @持续转矩 (rpm)；留空只跳过准入②（第 66 轮）',
 
     -- ===== 性能参数 / 选填 =====
     km                  DECIMAL(18,6)            COMMENT '电机常数 @25°C (Nm/SqRt(W))；留空时由详情表派生',
@@ -214,6 +214,16 @@ CREATE TABLE IF NOT EXISTS motor_coil_spec (
 );
 
 CREATE INDEX IF NOT EXISTS idx_coil_spec_motor ON motor_coil_spec (motor_id);
+
+
+-- ============================================================================
+-- 结构迁移（幂等，每次启动执行）
+--
+-- 第 66 轮：力矩双转速阈值改为选填。CREATE TABLE IF NOT EXISTS 不会改动已建好的表，
+-- 故对存量库补一条 ALTER；H2 对已可空的列重复执行 SET NULL 是空操作，可安全重复跑。
+-- ============================================================================
+ALTER TABLE motor_torque_spec ALTER COLUMN max_speed_peak SET NULL;
+ALTER TABLE motor_torque_spec ALTER COLUMN max_speed_cont SET NULL;
 
 
 -- ============================================================================

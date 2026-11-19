@@ -1,5 +1,5 @@
 import { client, request } from '@/api/http'
-import type { ImportJob, ImportJobSummary } from '@/types/import'
+import type { ImportCommitResult, ImportJob, ImportJobSummary } from '@/types/import'
 
 /** I1 上传一个样册 PDF，服务端解析后生成 Excel。 */
 export function createImportJob(file: File): Promise<ImportJob> {
@@ -41,4 +41,17 @@ export async function exportImportJob(jobId: string, fileName: string): Promise<
   a.click()
   a.remove()
   URL.revokeObjectURL(url)
+}
+
+/**
+ * I6 入库：把该任务 Excel 里的电机写进电机库（型号名 + 配置名相同即整体覆盖）。
+ *
+ * 逐台独立处理，返回逐台结果；必填不全的电机只跳过，不影响其他台。
+ */
+export function commitImportJob(jobId: string): Promise<ImportCommitResult> {
+  return request<ImportCommitResult>({
+    url: `/imports/${jobId}/commit`,
+    method: 'POST',
+    timeout: 120_000,
+  })
 }

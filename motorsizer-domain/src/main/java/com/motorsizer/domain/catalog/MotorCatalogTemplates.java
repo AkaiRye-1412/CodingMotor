@@ -145,11 +145,11 @@ public final class MotorCatalogTemplates {
     private static final String[] A_TOTAL_MASS = {"总质量", "Total mass"};
     private static final String[] A_INERTIA = {"转动惯量", "Moment of inertia", "Inertia", "J"};
     private static final String[] A_MAX_SPEED_PEAK_T = {
-            "最高转速 @峰值转矩", "峰值最高转速",
+            "最高转速 @峰值转矩", "最高转速 @峰值扭矩", "峰值最高转速",
             "Max. speed @peak", "Peak max speed", "N_max_peak"
     };
     private static final String[] A_MAX_SPEED_CONT_T = {
-            "最高转速 @持续转矩", "持续最高转速",
+            "最高转速 @持续转矩", "最高转速 @持续扭矩", "持续最高转速",
             "Max. speed @cont", "Cont. max speed", "N_max_cont"
     };
     // 音圈独有
@@ -219,9 +219,11 @@ public final class MotorCatalogTemplates {
                             formOnlyRequired("kth", "热耗散常数", "W/°C").withAliases(A_KTH).withSymbol("Kth"),
                             formOnlyRequired("uBus", "最高母线电压", "Vdc").withAliases(A_UBUS).withSymbol("Ubus"),
                             formOnly("poles", "极数", "-").withAliases(A_POLES).withSymbol("2p"),
-                            // 力矩样册均提供双转速阈值，故为必填（与直线/音圈不同）
-                            formOnlyRequired("maxSpeedPeak", "最高转速 @峰值转矩", "rpm").withAliases(A_MAX_SPEED_PEAK_T).withSymbol("Ωmax"),
-                            formOnlyRequired("maxSpeedCont", "最高转速 @持续转矩", "rpm").withAliases(A_MAX_SPEED_CONT_T).withSymbol("Ωmax")
+                            // 第 66 轮：不再是必填。样册口径并不统一——AXD 系列写「最高转速 @ 持续扭矩（600V）」，
+                            // AXM 系列只给一行「最高转速」，按必填处理会让整批力矩型号在入库预览里全部「跳过」。
+                            // 缺该项只跳过准入②并注明「未校核」，与直线/音圈同口径（第 43/44 轮）。
+                            formOnly("maxSpeedPeak", "最高转速 @峰值转矩", "rpm").withAliases(A_MAX_SPEED_PEAK_T).withSymbol("Ωmax"),
+                            formOnly("maxSpeedCont", "最高转速 @持续转矩", "rpm").withAliases(A_MAX_SPEED_CONT_T).withSymbol("Ωmax")
                     )),
                     new MotorFieldGroup(GROUP_MECHANICAL, false, List.of(
                             formOnly("totalMass", "总质量", "kg").withAliases(A_TOTAL_MASS),

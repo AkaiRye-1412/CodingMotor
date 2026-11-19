@@ -302,12 +302,17 @@ final class CalculationRequestValidator {
 
     private static Set<String> allowedValues(AxisKind axis, boolean structure) {
         Set<String> allowed = new HashSet<>();
+        // 第 67/68 轮：两个页签的「结构」筛选都替换为「系列」，允许值是型号名前缀而非模板结构枚举
+        if (structure) {
+            allowed.addAll(MotorSeries.forAxis(axis));
+            return allowed;
+        }
         List<MotorType> types = axis == AxisKind.LINEAR
                 ? List.of(MotorType.LINEAR, MotorType.COIL)
                 : List.of(MotorType.TORQUE);
         for (MotorType type : types) {
             MotorTypeTemplate template = MotorCatalogTemplates.of(type);
-            allowed.addAll(structure ? template.structures() : template.coolings());
+            allowed.addAll(template.coolings());
         }
         return allowed;
     }
