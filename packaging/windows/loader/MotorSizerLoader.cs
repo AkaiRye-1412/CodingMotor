@@ -251,8 +251,13 @@ namespace MotorSizer
             _port = port;
             _exeDir = exeDir;
             Text = "MotorSizer  电机选型工具";
-            Width = 1320;
-            Height = 840;
+
+            // 窗口初始尺寸基于屏幕工作区动态计算，避免在较矮的屏幕上被系统钳制
+            // 导致内容（如左列「用户输入」底部脚注）被裁切。
+            // 目标尺寸 1320×900，但不超过工作区（留少量边距），保证一屏尽量完整。
+            var wa = Screen.PrimaryScreen.WorkingArea;
+            Width = Math.Max(960, Math.Min(1320, wa.Width - 24));
+            Height = Math.Max(640, Math.Min(900, wa.Height - 24));
             MinimumSize = new Size(960, 640);
             StartPosition = FormStartPosition.CenterScreen;
 
