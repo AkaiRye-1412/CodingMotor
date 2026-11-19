@@ -175,27 +175,18 @@ public class CatalogParser {
             return 0;
         }
 
-        // 表右边界：优先取覆盖表头行的色块右缘（= 表格宽度），退化为最窄色块
+        // 表右边界：优先取覆盖表头行的色块右缘（= 表格宽度）；没有就按表头下方色块推。
         double headerY = probe.get(hs.get(0)).oy();
-        double right = 0;
-        for (FillBand b : bands) {
-            if (b.y0() - 20 <= headerY && headerY <= b.y1() + 6) {
-                right = Math.max(right, b.x1());
-            }
-        }
-        if (right <= 0 && !bands.isEmpty()) {
-            right = bands.stream().mapToDouble(FillBand::x1).min().orElse(0);
-        }
+        TextLine head = probe.get(hs.get(0));
+        double right = tableRightEdge(bands, headerY,
+                head.runs().stream().mapToDouble(TextRun::x1).max().orElse(0));
         if (right <= 0) {
             if (ocrMode) {
                 // 无底色块的位图表格：表头最后一列（Parallel/L）右侧还有整列数值，
                 // 而表格右边常并排着曲线图。用表头列距推「下一列」的位置，正好落在值列右缘。
-                TextLine head = probe.get(hs.get(0));
-                double maxX1 = head.runs().stream().mapToDouble(TextRun::x1).max().orElse(0);
-                right = maxX1 + columnStep(head);
+                right = head.runs().stream().mapToDouble(TextRun::x1).max().orElse(0) + columnStep(head);
             } else {
-                right = probe.get(hs.get(0)).runs().stream()
-                        .mapToDouble(TextRun::x1).max().orElse(0) + 15;
+                right = head.runs().stream().mapToDouble(TextRun::x1).max().orElse(0) + 15;
             }
         }
 
@@ -227,11 +218,64 @@ public class CatalogParser {
             if (rows.stream().allMatch(r -> r.values.isEmpty())) {
                 continue;
             }
+            // 说明页正文被当成参数名（样册「力和速度的关系」那类页：左侧一整段正文，
+            // 右侧并排一个「说明 / 单位 / 符号」的术语小表，符号列恰好凑齐全套表头词）。
+            // 正文句子和参数名在字形上完全不同，按「句读标点 + 超长名字」判，不猜版式。
+            if (looksLikeProse(rows)) {
+                continue;
+            }
             tables.add(new CatalogTable(pno, model, labels, cols.configTexts(), rows));
             notes.putAll(parseFootnotes(lines, block.end));
             got++;
         }
         return got;
+    }
+
+    /** 参数名里不该出现的句读标点：出现即说明抓到的是说明文字而非参数名。 */
+    private static final String PROSE_PUNCT = "。，；：、！？；,";
+
+    /** 参数名的合理上限（汉字/字母数）；再长基本是一整句话。 */
+    private static final int PROSE_NAME_MAX = 28;
+
+    /**
+     * 判断这块「表」其实是说明页正文，不是参数表。
+     *
+     * <p>样册的说明页（如「2. 力和速度的关系」）左侧是一整段正文，右侧并排一个
+     * 「说明 / 单位 / 符号」的术语小表 —— 表头词凑得齐全，正文长句就被当成参数名、
+     * 术语的字母（F/m/t/v）被当成值，最后产出一个假型号「未命名型号符号」和十几行垃圾。
+     *
+     * <p>判据只看文字本身，不猜版式：<b>符号列为空</b>的行里，名字带句读标点
+     * （{@code 。，；：、}）或超过 {@link #PROSE_NAME_MAX} 字，就算「正文行」；
+     * 正文行占到一半以上即整表丢弃。
+     *
+     * <p>符号列非空时不判 —— 英文图纸的参数名常常又长又带逗号
+     * （{@code Continuous force, self-cooled @100°C}），但它们都带符号，误伤不起。
+     */
+    static boolean looksLikeProse(List<TableRow> rows) {
+        List<TableRow> named = new ArrayList<>();
+        for (TableRow r : rows) {
+            if (!r.isSection() && !r.name().isEmpty()) {
+                named.add(r);
+            }
+        }
+        if (named.isEmpty()) {
+            return false;
+        }
+        int prose = 0;
+        for (TableRow r : named) {
+            if (!r.sym().isEmpty()) {
+                continue;
+            }
+            String n = r.name();
+            boolean hit = n.length() >= PROSE_NAME_MAX;
+            for (int i = 0; !hit && i < n.length(); i++) {
+                hit = PROSE_PUNCT.indexOf(n.charAt(i)) >= 0;
+            }
+            if (hit) {
+                prose++;
+            }
+        }
+        return prose * 2 > named.size();
     }
 
     /**
@@ -505,6 +549,35 @@ public class CatalogParser {
         return out;
     }
 
+    /**
+     * 表格右边界。
+     *
+     * <p>一、表头行本身有色块（多数样册的分节色块从表头开始）→ 取覆盖表头行的色块最右缘。
+     *
+     * <p>二、表头行没有色块 → 退化为「表头<b>下方</b>、且左缘在表头范围内」的色块最右缘。
+     * 这里必须取 max、且必须排除表头上方的色块：AUM5 那类宽表的分节色块只出现在
+     * 「机械参数 / 其他信息」两行，而页眉那条装饰色块（横跨标题栏、右缘 461pt）比整张表
+     * 窄一百多 pt —— 取 min 或把它算进来，都会把 461 之后的 S9/S10/S12 三列整段裁掉，
+     * 表现为「这几个型号没采集到」。
+     *
+     * @return 右边界；没有任何可用色块时返回 0（由调用方按表头文字宽度估算）
+     */
+    static double tableRightEdge(List<FillBand> bands, double headerY, double headerMaxX) {
+        double right = 0;
+        for (FillBand b : bands) {
+            if (b.y0() - 20 <= headerY && headerY <= b.y1() + 6) {
+                right = Math.max(right, b.x1());
+            }
+        }
+        if (right > 0) {
+            return right;
+        }
+        return bands.stream()
+                .filter(b -> b.y0() >= headerY - 2)          // 表头上方的页眉/标题色块不算
+                .filter(b -> b.x0() <= headerMaxX)           // 表外并排的色块（侧栏、下图）不算
+                .mapToDouble(FillBand::x1).max().orElse(0);
+    }
+
     /** 表头相邻列的中心距（取中位数），用于无底色块时推断「值列」在表头右侧多远。 */
     private static double columnStep(TextLine header) {
         List<Double> cxs = header.runs().stream().map(TextRun::cx).sorted().toList();
@@ -670,33 +743,102 @@ public class CatalogParser {
         return new Columns(List.copyOf(cols), List.copyOf(configs));
     }
 
-    /** 表头上方一行里若有多列型号名，给出 型号 → 接法列下标集合。 */
-    Map<String, List<Integer>> modelGroups(List<TextLine> lines, int headerIndex, Columns cols) {
-        if (headerIndex == 0) {
-            return Map.of();
-        }
-        List<TextRun> above = lines.get(headerIndex - 1).runs();
-        List<TextRun> cand = new ArrayList<>();
-        for (TextRun r : above) {
-            if (LayoutRules.MODEL_PATTERN.matcher(r.token()).matches()) {
-                cand.add(r);
+    /** 型号名的续行/后缀：{@code -V107}、{@code -B4} 这类单独成行或单独成 token 的部分。 */
+    private static final Pattern MODEL_SUFFIX = Pattern.compile("^[-/][A-Za-z0-9.]+$");
+
+    /**
+     * 表头上方的型号名（可能横跨 2~3 行），按 x 排序。
+     *
+     * <p>宽表会把型号名排成两行：左边 S1~S6 与右边 S8~S12 的字号/基线并不一致
+     * （AUM5 那页右边整块上移 4pt，超过 {@link LayoutRules#LINE_TOLERANCE}，被拆成两条「行」），
+     * 再加上「AUM5-S8 / -V107」这种型号与后缀分行的写法 —— 只取「表头上方一行」必然只拿到半边，
+     * 另外半边就成了没有型号归属的裸列（导出时列名退化成「串联/并联」，型号只剩 AUM5-S1）。
+     *
+     * <p>扫描上限 3 行，遇到含其他文字的行走人（表标题、上一张表的表体）。
+     */
+    List<TextRun> modelNames(List<TextLine> lines, int headerIndex) {
+        List<TextRun> models = new ArrayList<>();
+        List<TextRun> suffixes = new ArrayList<>();
+        int scanned = 0;
+        for (int i = headerIndex - 1; i >= 0 && scanned < 3; i--, scanned++) {
+            boolean nameRow = true;
+            for (TextRun r : lines.get(i).runs()) {
+                String t = r.token();
+                if (t.isEmpty()) {
+                    continue;
+                }
+                if (LayoutRules.MODEL_PATTERN.matcher(t).matches()) {
+                    models.add(r);
+                } else if (MODEL_SUFFIX.matcher(t).matches()) {
+                    suffixes.add(r);
+                } else {
+                    nameRow = false;
+                    break;
+                }
+            }
+            if (!nameRow) {
+                break;
             }
         }
-        if (cand.size() < 2 || cand.size() != above.size()) {
+        if (models.isEmpty()) {
+            return List.of();
+        }
+        // 后缀（-V107 / -V80）按横向重叠贴回型号：AUM5-S8 + -V107 → AUM5-S8-V107
+        for (TextRun s : suffixes) {
+            TextRun host = null;
+            double best = 0;
+            for (TextRun m : models) {
+                double ov = Math.min(m.x1(), s.x1()) - Math.max(m.x0(), s.x0());
+                if (ov > best) {
+                    best = ov;
+                    host = m;
+                }
+            }
+            if (host != null) {
+                int idx = models.indexOf(host);
+                models.set(idx, TextRun.of(host.token() + s.token(), Math.min(host.x0(), s.x0()),
+                        Math.max(host.x1(), s.x1()), host.oy(), host.size()));
+            }
+        }
+        models.sort(Comparator.comparingDouble(TextRun::x0));
+        return models;
+    }
+
+    /**
+     * 表头上方的型号名 → 各自占哪几列（列下标集合）。
+     *
+     * <p>按「型号名与列区间的横向重叠最大者」判归属，而不是「列中心落在型号名范围里」：
+     * 型号名的宽度是排版者随手定的，和列宽并不同步（AUM5-S6 的名字右缘距下一列中心只差 0.05pt，
+     * 旧判据会把 S8 的 P5 列算给 S6）。重叠量还顺带解决了「一个型号占 1 列还是 2 列」。
+     */
+    Map<String, List<Integer>> modelGroups(List<TextLine> lines, int headerIndex, Columns cols) {
+        List<TextRun> names = modelNames(lines, headerIndex);
+        if (names.size() < 2) {
             return Map.of();
         }
         Map<String, List<Integer>> groups = new LinkedHashMap<>();
-        for (TextRun s : cand) {
-            List<Integer> idxs = new ArrayList<>();
-            for (int i = 0; i < cols.columns().size(); i++) {
-                Column c = cols.columns().get(i);
-                double center = (c.lo() + c.hi()) / 2;
-                if (c.name().startsWith("v") && s.x0() - 4 <= center && center <= s.x1() + 4) {
-                    idxs.add(i);
+        for (int i = 0; i < cols.columns().size(); i++) {
+            Column c = cols.columns().get(i);
+            if (!c.name().startsWith("v")) {
+                continue;
+            }
+            double width = Math.max(1.0, c.hi() - c.lo());
+            TextRun owner = null;
+            double best = 0;
+            for (TextRun s : names) {
+                // 允许 2pt 的边界误差：型号名的字面宽度常比它覆盖的列窄一点点
+                double ov = Math.min(c.hi(), s.x1() + 2) - Math.max(c.lo(), s.x0() - 2);
+                if (ov > best) {
+                    best = ov;
+                    owner = s;
                 }
             }
-            groups.put(s.token(), idxs);
+            if (owner != null && best >= width * 0.2) {
+                groups.computeIfAbsent(owner.token(), k -> new ArrayList<>()).add(i);
+            }
         }
+        // 一个型号都没占到的（表标题里单独的 AUM5 之类）不算型号列
+        groups.entrySet().removeIf(e -> e.getValue().isEmpty());
         return groups;
     }
 
@@ -747,7 +889,7 @@ public class CatalogParser {
         return "未命名型号";
     }
 
-    private List<String> columnLabels(Columns cols, Map<String, List<Integer>> groups) {
+    List<String> columnLabels(Columns cols, Map<String, List<Integer>> groups) {
         List<String> labels = new ArrayList<>();
         for (int i = 0; i < cols.configs().size(); i++) {
             String key = "v" + i;
@@ -765,6 +907,12 @@ public class CatalogParser {
             }
             String prefix = owner == null ? "" : owner;
             String token = cols.configs().get(i).token();
+            // 型号名里已经含有这个接法/绕组代号时不再重复拼：AUM6 的型号本身就写成
+            // AUM6-P5-S4，表头再标一次 P5，会拼出 AUM6-P5-S4-P5 这种不存在的型号。
+            if (owner != null && !token.isEmpty() && hasSegment(owner, token)) {
+                labels.add(owner);
+                continue;
+            }
             // 中文接法直接粘（AKM200-W-B8 + 并联）；两侧都是 ASCII 字母数字时用 - 隔开
             // （AKH100-N-B2 + L → …-B2-L），否则 "B2L" 糊在一起分不清是型号还是接法。
             String glue = !prefix.isEmpty() && !token.isEmpty()
@@ -774,6 +922,16 @@ public class CatalogParser {
             labels.add(label.isEmpty() ? "列" + (i + 1) : label);
         }
         return labels;
+    }
+
+    /** 型号里是否已有 {@code -token-} 这样的一段（按 {@code -} 分段、忽略大小写）。 */
+    private static boolean hasSegment(String model, String token) {
+        for (String part : model.split("-")) {
+            if (part.equalsIgnoreCase(token)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static boolean isAsciiAlnum(char c) {
@@ -910,6 +1068,14 @@ public class CatalogParser {
                 prevWasFoot = foot;
             }
             String t = buf.toString().strip();
+            // 名字格里只剩一串小字号数字：那是上标脚注号单独落到了一条基线上（不是参数名）。
+            // AUM5 的「热耗散常数(气冷)¹ / (水冷)⁴」两个编号被排在同一基线上，整行会被读成
+            // 参数名「14；热耗散常数(水冷)」，字段字典再也匹配不上。
+            if (!t.isEmpty() && "name".equals(key) && PURE_NUMBER.matcher(t).matches()
+                    && line.stream().allMatch(s -> PURE_NUMBER.matcher(s.token()).matches())) {
+                marks.append(t);
+                t = "";
+            }
             if (!t.isEmpty()) {
                 body.add(t);
             }

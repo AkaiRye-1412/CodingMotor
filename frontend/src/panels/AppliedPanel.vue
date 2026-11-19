@@ -165,6 +165,11 @@ const rows = computed<AppliedRow[]>(() => {
 </template>
 
 <style scoped>
+.applied-panel {
+  display: flex;
+  flex-direction: column;
+}
+
 .verdict-line {
   display: flex;
   gap: 8px;
@@ -212,10 +217,21 @@ const rows = computed<AppliedRow[]>(() => {
   font-variant-numeric: tabular-nums;
 }
 
+/*
+ * 供电结论行（第 78 轮）：字号比正文大一号（13px），整句水平居中的同时
+ * 在行内垂直居中 —— 这行是给结论用的，居中后比左对齐更容易一眼看到。
+ */
 .supply-line {
-  margin-top: 8px;
-  font-size: 12px;
-  line-height: 1.6;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  min-height: 30px;
+  margin-top: auto;
+  margin-bottom: auto;
+  padding: 0;
+  font-size: 14px;
+  line-height: 1;
+  text-align: left;
 }
 
 .supply-line.ok {

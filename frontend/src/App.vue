@@ -168,7 +168,7 @@ async function bootstrap() {
         <PanelSection title="方案管理">
           <PlanPanel />
         </PanelSection>
-        <PanelSection title="用户输入" hint="双列：输入 / 计算结果">
+        <PanelSection title="用户输入">
           <InputPanel />
         </PanelSection>
       </div>

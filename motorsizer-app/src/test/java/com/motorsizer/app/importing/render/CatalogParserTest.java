@@ -368,6 +368,133 @@ class CatalogParserTest {
         assertThat(cols.at(301.1)).isEqualTo("v1");
     }
 
+    /**
+     * 宽表（AUM5）的两段式表头：型号名分成两条基线、右边四个型号还带「-V107/-V80」后缀行。
+     *
+     * <p>旧实现只取「表头上方一行」的型号名，遇到这种版式整行全是后缀（{@code -V107}），
+     * 型号分组直接为空 —— 13 列全退化成「串联/串联/并联…」这类裸接法，型号只剩一个 AUM5-S1，
+     * S2 之后全部丢失（用户反馈「这几个电机型号没有录入」）。坐标取自真实样册第 41 页。
+     */
+    @Test
+    void groupsModelsAcrossTwoHeaderRowsAndSuffixRow() {
+        TextLine modelsRight = new TextLine(85.80, List.of(
+                TextRun.of("AUM5-S8", 420.1, 446.5, 85.80, 6.4),
+                TextRun.of("AUM5-S9", 449.4, 475.8, 85.80, 6.4),
+                TextRun.of("AUM5-S10", 479.8, 509.5, 85.80, 6.4),
+                TextRun.of("AUM5-S12", 511.8, 541.5, 85.80, 6.4)));
+        TextLine modelsLeft = new TextLine(89.88, List.of(
+                TextRun.of("AUM5-S1", 171.4, 199.8, 89.88, 6.6),
+                TextRun.of("AUM5-S2", 211.9, 241.9, 89.88, 6.8),
+                TextRun.of("AUM5-S3", 264.3, 294.2, 89.88, 6.8),
+                TextRun.of("AUM5-S4", 315.0, 344.9, 89.88, 6.8),
+                TextRun.of("AUM5-S5", 357.0, 385.5, 89.88, 6.6),
+                TextRun.of("AUM5-S6", 388.8, 417.3, 89.88, 6.6)));
+        TextLine suffixes = new TextLine(93.96, List.of(
+                TextRun.of("-V107", 424.9, 441.7, 93.96, 6.4),
+                TextRun.of("-V80", 455.9, 469.4, 93.96, 6.4),
+                TextRun.of("-V107", 486.2, 503.1, 93.96, 6.4),
+                TextRun.of("-V107", 518.2, 535.1, 93.96, 6.4)));
+        TextLine header = new TextLine(103.58, List.of(
+                TextRun.of("性能参数", 43.4, 71.3, 103.58, 7),
+                TextRun.of("符号", 122.9, 135.0, 103.58, 6),
+                TextRun.of("单位", 149.6, 161.7, 103.58, 6),
+                TextRun.of("串联", 179.6, 191.6, 103.58, 6),
+                TextRun.of("串联", 207.7, 219.8, 103.58, 6),
+                TextRun.of("并联", 233.3, 245.3, 103.58, 6),
+                TextRun.of("串联", 259.5, 271.6, 103.58, 6),
+                TextRun.of("并联", 285.3, 297.3, 103.58, 6),
+                TextRun.of("串联", 311.0, 323.1, 103.58, 6),
+                TextRun.of("并联", 335.7, 347.8, 103.58, 6),
+                TextRun.of("并联", 365.2, 377.3, 103.58, 6),
+                TextRun.of("并联", 397.0, 409.1, 103.58, 6),
+                TextRun.of("P5", 429.8, 436.8, 103.58, 5),
+                TextRun.of("P7", 459.1, 466.1, 103.58, 5),
+                TextRun.of("P5", 491.1, 498.1, 103.58, 5),
+                TextRun.of("P5", 523.2, 530.2, 103.58, 5)));
+
+        List<TextLine> lines = List.of(modelsRight, modelsLeft, suffixes, header);
+        CatalogParser parser = new CatalogParser(new PdfPageScanner());
+        CatalogParser.Columns cols = parser.buildColumns(header, 542.9);
+        Map<String, List<Integer>> groups = parser.modelGroups(lines, 3, cols);
+
+        assertThat(cols.configTexts()).hasSize(13);
+        assertThat(groups).containsOnlyKeys(
+                "AUM5-S1", "AUM5-S2", "AUM5-S3", "AUM5-S4", "AUM5-S5", "AUM5-S6",
+                "AUM5-S8-V107", "AUM5-S9-V80", "AUM5-S10-V107", "AUM5-S12-V107");
+        // 一个型号占 1 列还是 2 列，由型号名与列区间的横向重叠决定
+        assertThat(groups.get("AUM5-S1")).containsExactly(3);
+        assertThat(groups.get("AUM5-S2")).containsExactly(4, 5);
+        assertThat(groups.get("AUM5-S5")).containsExactly(10);
+        assertThat(groups.get("AUM5-S8-V107")).containsExactly(12);
+        assertThat(groups.get("AUM5-S12-V107")).containsExactly(15);
+
+        assertThat(parser.namesFromTitle(lines, 3, groups)).isEqualTo("AUM5");
+        assertThat(parser.columnLabels(cols, groups)).containsExactly(
+                "AUM5-S1串联", "AUM5-S2串联", "AUM5-S2并联", "AUM5-S3串联", "AUM5-S3并联",
+                "AUM5-S4串联", "AUM5-S4并联", "AUM5-S5并联", "AUM5-S6并联",
+                "AUM5-S8-V107-P5", "AUM5-S9-V80-P7", "AUM5-S10-V107-P5", "AUM5-S12-V107-P5");
+    }
+
+    /** 型号名里已含绕组代号时不再重复拼：{@code AUM6-P5-S4} + 表头 {@code P5} 还是 {@code AUM6-P5-S4}。 */
+    @Test
+    void doesNotRepeatWindingCodeAlreadyInModel() {
+        TextLine header = new TextLine(90, List.of(
+                TextRun.of("符号", 138.3, 150.4, 90, 6),
+                TextRun.of("单位", 175.0, 187.1, 90, 6),
+                TextRun.of("P5", 210.5, 217.5, 90, 5),
+                TextRun.of("P8", 257.1, 264.1, 90, 5)));
+        List<TextLine> lines = List.of(
+                new TextLine(78.5, List.of(
+                        TextRun.of("AUM6-P5-S4", 195.0, 241.0, 78.5, 6.4),
+                        TextRun.of("AUM6-P8-S6", 242.0, 288.0, 78.5, 6.4))),
+                header);
+
+        CatalogParser parser = new CatalogParser(new PdfPageScanner());
+        CatalogParser.Columns cols = parser.buildColumns(header, 300.0);
+        Map<String, List<Integer>> groups = parser.modelGroups(lines, 1, cols);
+
+        assertThat(parser.columnLabels(cols, groups))
+                .containsExactly("AUM6-P5-S4", "AUM6-P8-S6");
+    }
+
+    /**
+     * 表右边界不能用「页眉装饰条」的宽度。
+     *
+     * <p>AUM5 那页的表头行没有色块，分节色块只出现在「机械参数 / 其他信息」两行（右缘 543.2），
+     * 而页眉那条装饰色块右缘只有 461.1。旧实现取「最窄色块」，整张表被裁到 461pt，
+     * 之后的 S9 / S10 / S12 三列全部丢失。
+     */
+    @Test
+    void tableRightEdgeIgnoresHeaderBand() {
+        List<FillBand> bands = List.of(
+                new FillBand(28.3, 36.8, -0.9, 461.1),      // 页眉装饰条：横跨标题栏，比表窄
+                new FillBand(310.1, 321.8, 41.8, 543.2),    // 「机械参数」分节
+                new FillBand(364.3, 375.6, 41.7, 543.2));   // 「其他信息」分节
+
+        assertThat(CatalogParser.tableRightEdge(bands, 103.6, 530.2)).isEqualTo(543.2);
+        // 表头行自己有色块时，仍以覆盖表头的那条为准
+        List<FillBand> withHeaderBand = List.of(new FillBand(100.0, 110.0, 44.0, 279.0),
+                new FillBand(130.0, 140.0, 44.0, 300.0));
+        assertThat(CatalogParser.tableRightEdge(withHeaderBand, 103.6, 260.0)).isEqualTo(279.0);
+    }
+
+    /**
+     * 名字格里的上标脚注号单独落到一条基线上时，不能当成参数名。
+     *
+     * <p>AUM5 的「热耗散常数(气冷)¹ / (水冷)⁴」两个编号被排在同一条基线上，
+     * 整行会被读成参数名「14；热耗散常数(水冷)」，字段字典与冷却变体判定都匹配不上。
+     */
+    @Test
+    void strayFootnoteDigitsInNameColumnAreNotAName() {
+        CatalogParser parser = new CatalogParser(new PdfPageScanner());
+        CatalogParser.CellText cell = parser.joinCell("name", List.of(
+                TextRun.of("1", 109.0, 111.3, 126.2, 4),
+                TextRun.of("4", 113.7, 116.0, 126.2, 4)));
+
+        assertThat(cell.text()).isEmpty();
+        assertThat(cell.marks()).isEqualTo("14");
+    }
+
     @Test
     void mergesModelAndConfigIntoOneColumn() {
         // 配置名已含型号：重复部分只留一份（用户裁定：AUM1 + AUM1-S1串联 → AUM1-S1-S）
@@ -601,6 +728,66 @@ class CatalogParserTest {
         Path xlsx = temp.resolve("real.xlsx");
         new CatalogWorkbookWriter().write(parsed, xlsx);
         assertThat(Files.size(xlsx)).isGreaterThan(5000);
+    }
+
+    // ---------------------------------------------------------------- 说明页正文
+
+    /**
+     * 样册「2. 力和速度的关系」那种说明页：左侧一整段正文，右侧并排一个
+     * 「说明 / 单位 / 符号」术语小表，表头词凑得齐全 —— 结果正文长句变成参数名、
+     * 术语字母变成值，产出一个假型号。这里用该页的真实文案作夹具。
+     */
+    @Test
+    void prosePageIsNotTreatedAsParameterTable() {
+        List<TableRow> rows = List.of(
+                proseRow("值对应的作用力的瞬时值。(力N)", "F"),
+                proseRow("如果一个物体从静止开始运动，换言之，其初始速(时间s)", "m"),
+                proseRow("度为零，然后，给出了速度和加速度之间关系的方(加速度m/s)", "a"),
+                proseRow("程：v = at(速度m/s)", "v"),
+                proseRow("同样，位移，速度和加速度之间关系的方程：s = ½at2", "s"),
+                proseRow("力矩Nm", "W"),
+                proseRow("同样，位移，速度和加速度之间关系的方程：τ = ½Jω2", "p"));
+
+        assertThat(CatalogParser.looksLikeProse(rows)).isTrue();
+    }
+
+    /** 英文图纸的参数名又长又带逗号，但只要符号列有值就不能当正文丢掉。 */
+    @Test
+    void longEnglishNamesWithSymbolAreStillATable() {
+        List<TableRow> rows = List.of(
+                symbolRow("Continuous force (self-cooled) @100°C", "Fcn"),
+                symbolRow("Peak force, for 1 second max", "Fpk"),
+                symbolRow("Force constant, ±10% tolerance", "Kf"),
+                symbolRow("Back EMF constant, ±10% tolerance", "Ke"));
+
+        assertThat(CatalogParser.looksLikeProse(rows)).isFalse();
+    }
+
+    /** 中文样册的短参数名照旧通过，哪怕有半数是空符号（参数表里偶尔缺符号）。 */
+    @Test
+    void shortParameterNamesSurviveEvenWithoutSymbol() {
+        List<TableRow> rows = List.of(
+                proseRow("持续推力(自冷) @100°C", "3.0"),
+                proseRow("峰值推力", "11.9"),
+                proseRow("力常数 ±10%", "1.75"),
+                proseRow("极距", "21"));
+
+        assertThat(CatalogParser.looksLikeProse(rows)).isFalse();
+    }
+
+    private static TableRow proseRow(String name, String value) {
+        TableRow r = new TableRow();
+        r.name = name;
+        r.values.put("v0", value);
+        return r;
+    }
+
+    private static TableRow symbolRow(String name, String sym) {
+        TableRow r = new TableRow();
+        r.name = name;
+        r.sym = sym;
+        r.values.put("v0", "1");
+        return r;
     }
 
     // ---------------------------------------------------------------- 夹具
