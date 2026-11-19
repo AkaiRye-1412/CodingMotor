@@ -3,28 +3,15 @@ package com.motorsizer.app.importing;
 import java.time.Instant;
 import java.util.List;
 
-/** 导入任务（06 §4 job.json 根）。 */
+/**
+ * 转换任务（06 v2 §4 job.json 根）。
+ *
+ * <p>一次上传 = 一个任务 = 一个 xlsx；任务目录下的 {@code result.xlsx} 就是交付物。
+ */
 public record ImportJob(
         String jobId,
         JobStatus status,
         Instant createdAt,
         List<ImportFileRef> files,
-        List<ImportPage> pages,
-        List<Draft> drafts) {
-
-    public ImportJob withStatus(JobStatus status) {
-        return new ImportJob(jobId, status, createdAt, files, pages, drafts);
-    }
-
-    public ImportJob withPages(List<ImportPage> pages) {
-        return new ImportJob(jobId, status, createdAt, files, pages, drafts);
-    }
-
-    public ImportJob withPagesAndDrafts(List<ImportPage> pages, List<Draft> drafts) {
-        return new ImportJob(jobId, status, createdAt, files, pages, drafts);
-    }
-
-    public ImportJob withDrafts(List<Draft> drafts) {
-        return new ImportJob(jobId, status, createdAt, files, pages, drafts);
-    }
+        ImportStats stats) {
 }

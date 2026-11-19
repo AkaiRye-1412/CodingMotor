@@ -1,22 +1,18 @@
 import { client, request } from '@/api/http'
-import type {
-  CommitResult,
-  Draft,
-  DraftIssue,
-  ImportJob,
-  ImportJobSummary,
-  ImportPage,
-} from '@/types/import'
-import type { MotorUpsertRequest } from '@/types/motor'
+import type { ImportJob, ImportJobSummary } from '@/types/import'
 
-/** I1 创建任务（上传 PDF/图片，multipart）。 */
-export async function createImportJob(files: File[]): Promise<ImportJob> {
+/** I1 上传一个样册 PDF，服务端解析后生成 Excel。 */
+export function createImportJob(file: File): Promise<ImportJob> {
   const form = new FormData()
-  for (const f of files) form.append('files', f)
-  const response = await client.post<ApiEnvelope<ImportJob>>('/imports', form, {
-    headers: { 'Content-Type': 'multipart/form-data' },
+  form.append('file', file)
+  // 走统一封装：网络层失败（后端未启动/重启中/超时）也能给出可读提示，
+  // 而不是笼统的「转换失败」。大样册（324 页 / 26MB）同步解析约 5s，超时放宽到 180s。
+  return request<ImportJob>({
+    url: '/imports',
+    method: 'POST',
+    data: form,
+    timeout: 180_000,
   })
-  return response.data.data as ImportJob
 }
 
 /** I2 任务列表（摘要）。 */
@@ -29,77 +25,20 @@ export function getImportJob(jobId: string): Promise<ImportJob> {
   return request<ImportJob>({ url: `/imports/${jobId}`, method: 'GET' })
 }
 
-/** I4 取消/清理任务。 */
+/** I4 删除任务（连同原 PDF 与产物）。 */
 export function deleteImportJob(jobId: string): Promise<void> {
   return request<void>({ url: `/imports/${jobId}`, method: 'DELETE' })
 }
 
-/** I5 页面列表。 */
-export function listImportPages(jobId: string): Promise<ImportPage[]> {
-  return request<ImportPage[]>({ url: `/imports/${jobId}/pages`, method: 'GET' })
-}
-
-/** I6 页面提取文本。 */
-export function getImportPageText(jobId: string, pageId: string): Promise<string[]> {
-  return request<string[]>({ url: `/imports/${jobId}/pages/${pageId}/text`, method: 'GET' })
-}
-
-/** I7 解析单页。 */
-export function recognizePage(jobId: string, pageId: string): Promise<Draft[]> {
-  return request<Draft[]>({ url: `/imports/${jobId}/pages/${pageId}/recognize`, method: 'POST' })
-}
-
-/** I8 草稿列表。 */
-export function listDrafts(jobId: string, pageId?: string): Promise<Draft[]> {
-  return request<Draft[]>({
-    url: `/imports/${jobId}/drafts`,
-    method: 'GET',
-    params: pageId ? { pageId } : undefined,
-  })
-}
-
-/** I9 编辑草稿。 */
-export function editDraft(jobId: string, draftId: string, payload: MotorUpsertRequest): Promise<Draft> {
-  return request<Draft>({ url: `/imports/${jobId}/drafts/${draftId}`, method: 'PUT', data: payload })
-}
-
-/** I10 删除草稿。 */
-export function deleteDraft(jobId: string, draftId: string): Promise<void> {
-  return request<void>({ url: `/imports/${jobId}/drafts/${draftId}`, method: 'DELETE' })
-}
-
-/** I11 单条校验。 */
-export function validateDraft(jobId: string, draftId: string): Promise<DraftIssue[]> {
-  return request<DraftIssue[]>({ url: `/imports/${jobId}/drafts/${draftId}/validate`, method: 'POST' })
-}
-
-/** I12 批量提交勾选草稿。 */
-export function commitJob(jobId: string): Promise<CommitResult> {
-  return request<CommitResult>({ url: `/imports/${jobId}/commit`, method: 'POST' })
-}
-
-/** I13 勾选/取消勾选。 */
-export function setDraftChecked(jobId: string, draftId: string, checked: boolean): Promise<Draft> {
-  return request<Draft>({
-    url: `/imports/${jobId}/drafts/${draftId}/checked`,
-    method: 'POST',
-    data: { checked },
-  })
-}
-
-/** 导出识别草稿为 Excel（xlsx 下载）。 */
-export async function exportImportJob(jobId: string): Promise<void> {
+/** I5 下载生成的 Excel。 */
+export async function exportImportJob(jobId: string, fileName: string): Promise<void> {
   const response = await client.get(`/imports/${jobId}/export`, { responseType: 'blob' })
-  const blob = response.data as Blob
-  const url = URL.createObjectURL(blob)
+  const url = URL.createObjectURL(response.data as Blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = `import-${jobId}.xlsx`
+  a.download = fileName || `import-${jobId}.xlsx`
   document.body.appendChild(a)
   a.click()
   a.remove()
   URL.revokeObjectURL(url)
 }
-
-// http.ts 导出的 ApiEnvelope 类型在此文件按需内联引用
-import type { ApiEnvelope } from '@/types/api'

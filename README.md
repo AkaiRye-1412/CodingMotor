@@ -67,7 +67,7 @@ mvn clean package -DskipFrontend=true
 
 - 数据库：`%APPDATA%\MotorSizer\data\motorsizer.mv.db`
 - 日志：`%APPDATA%\MotorSizer\logs\motorsizer.log`
-- 样册识别临时文件（待实现）：`%APPDATA%\MotorSizer\imports`
+- 样册转 Excel 的临时任务与产物：`%APPDATA%\MotorSizer\imports\{jobId}\`（原 PDF + result.xlsx，30 天惰性清理）
 
 首次启动为空库，需先在电机库录入电机。
 
@@ -83,8 +83,8 @@ mvn clean package -DskipFrontend=true
 | K1 计算内核（规划 / 物理 / 应用值 / 准入 / 采样） | ✅ 已完整迁移，全部黄金用例逐项通过 |
 | S3 `POST /api/calculations` | ✅ 已实现 B1 契约与 13 项接口测试 |
 | 前端 M4 输入 / M6–M9 接线 | ✅ 已接入 B1：双列输入、6 卡片、候选过滤、参数表、应用值、两张曲线 |
-| 前端 M10 录入表单（通道 1 手工录入） | ✅ 已实现：三类型切换保留值、必填前置、冷却标签联动、校验标红/聚焦/实时刷新、主键重复拒绝、音圈 g→kg 换算、来源信息；通道 2 样册识别禁用占位 |
-| 样册识别 I1–I13（P0） | ✅ 已实现：**上传即自动识别**；**符号列精确匹配**（Tcn/Kt/R25 等样册「符号」列作为一等映射键，K2 加 `symbol` 字段下发）、只抓必填参数（非必填忽略）、多列按「串联/并联」列头对齐取值（不再误取 @25℃/±10%/范围值里的数字）、中英文别名兜底、30 天惰性清理、逐条独立事务提交、置信度 0.6 标红不阻断；**导出 Excel 人工核对**（`GET /api/imports/{id}/export`）；前端两步向导（上传→草稿表格+导出）。74 项测试。图片/扫描页待 P1（Tess4J OCR）。设计见 [doc/design/06.样册识别模块设计.md](doc/design/06.样册识别模块设计.md) |
+| 前端 M10 录入表单（通道 1 手工录入） | ✅ 已实现：三类型切换保留值、必填前置、冷却标签联动、校验标红/聚焦/实时刷新、主键重复拒绝、音圈 g→kg 换算、来源信息；通道 2 改为「样册转 Excel」，不写库 |
+| 样册 PDF → Excel（06 v2） | ✅ 已实现（2026-11-19 改版）：**只做一件事——把样册 PDF 转成 Excel**。草稿/编辑/校验/勾选提交/写电机库等链路已全部取消。**只抓「性能参数」分节**（机械参数 / 编码器参数 / 其他信息「其它信息」一律丢弃，丢弃行数记在「识别报告」页）。坐标级版面解析（PDFBox 取字形坐标与底色块，POI 写 xlsx）：表头「符号 + 单位」定位表格、表头 token 中心线定列边界、浅蓝底色块定分节、型号行定接法列归属、脚注按左缘+行距还原。输出 4 类工作表：**参数汇总**（固定 6 列：型号/类别/参数名/符号/单位/值——**不采集脚注与页码**；接法并进型号名，串联 → `-S`、并联 → `-P`，`AUM2-S2串联` → `AUM2-S2-S`，AXD 这类两列版式出 `AXD120-71-S` / `-P` 两行）、**每型号原版式页**、**脚注说明**、**识别报告**。接口 5 个：`POST /api/imports`（上传即转换）、`GET/DELETE /api/imports/{id}`、`GET /api/imports`、`GET /api/imports/{id}/export`。算法与 `.workbuddy/tmp/pdf2excel.py` 一一对应，真实样册（AXD-ERA，10 页/5 型号/190 行）与脚本产物**逐行一致**。不做 OCR（扫描件报「无文字层」）。46 项后端测试。设计见 [doc/design/06.样册识别模块设计.md](doc/design/06.样册识别模块设计.md) |
 | S4 报告 `POST /api/reports/pdf` | ✅ 已实现：Thymeleaf + OpenHTMLtoPDF + Noto Sans SC，5 项契约测试 + 端到端冒烟 |
 | 启动器与打包（A-3/A-4/AR-11/R-3） | ✅ 已实现：单实例锁、自动空闲端口、jpackage 免安装绿色包；双击弹 **WebView2 原生窗口**（非浏览器标签页） |
 

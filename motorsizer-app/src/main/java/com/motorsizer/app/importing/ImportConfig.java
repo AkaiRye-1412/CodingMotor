@@ -6,7 +6,7 @@ import org.springframework.stereotype.Component;
 import java.nio.file.Path;
 
 /**
- * 样册识别运行参数（06 §2 / §3）。
+ * 样册转换的运行参数（06 v2 §2）。
  *
  * <p>默认基址 {@code %APPDATA%\MotorSizer\imports}，与库文件同处（A-5）。
  * 测试用 {@code motorsizer.imports.dir} 指向临时目录，并据此跳过启动期自动清理，避免误删真实数据。
@@ -42,6 +42,11 @@ public class ImportConfig {
 
     public Path sourceDir(String jobId) {
         return jobDir(jobId).resolve("source");
+    }
+
+    /** 转换产物：任务目录下唯一的 xlsx。 */
+    public Path resultFile(String jobId) {
+        return jobDir(jobId).resolve("result.xlsx");
     }
 
     public int retentionDays() {

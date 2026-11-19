@@ -53,6 +53,9 @@ logging:
     root: info
     # 计算与报告实现后按需下调，避免开发期刷屏
     com.motorsizer: info
+    # 样册 PDF 里的 JPEG2000 图片本机无 JAI 解码器，PDFBox 每张图刷一条 ERROR 堆栈；
+    # 与坐标级解析无关，静音以免大册子把日志和内存打满（2026-11-19 崩溃排查结论）
+    org.apache.pdfbox.contentstream.PDFStreamEngine: 'off'
   file:
     name: ${user.home}/AppData/Roaming/MotorSizer/logs/motorsizer.log
 

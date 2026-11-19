@@ -1,5 +1,6 @@
 package com.motorsizer.app.importing;
 
+import com.fasterxml.jackson.core.JacksonException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
@@ -19,10 +20,10 @@ import java.util.Optional;
 import java.util.stream.Stream;
 
 /**
- * job.json 文件持久化（06 §2：任务与草稿不落数据库）。
+ * job.json 文件持久化（06 v2 §2：任务不落数据库）。
  *
- * <p>每个任务一个目录 {@code {baseDir}/{jobId}/}，内含 {@code job.json} 与 {@code source/} 原文件。
- * 读写非原子但单用户本地工具可接受；保存时先写临时文件再移动，降低中途崩溃损坏风险。
+ * <p>每个任务一个目录 {@code {baseDir}/{jobId}/}，内含 {@code job.json}、{@code source/} 原 PDF
+ * 与 {@code result.xlsx} 产物。保存时先写临时文件再移动，降低中途崩溃损坏风险。
  */
 @Component
 public class ImportStore {
@@ -53,7 +54,8 @@ public class ImportStore {
         Path target = config.jobFile(job.jobId());
         Path tmp = dir.resolve("job.json.tmp");
         mapper.writeValue(tmp.toFile(), job);
-        Files.move(tmp, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+        Files.move(tmp, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                java.nio.file.StandardCopyOption.ATOMIC_MOVE);
     }
 
     public Optional<ImportJob> read(String jobId) throws IOException {
@@ -61,7 +63,14 @@ public class ImportStore {
         if (!Files.exists(file)) {
             return Optional.empty();
         }
-        return Optional.of(mapper.readValue(file.toFile(), ImportJob.class));
+        try {
+            return Optional.of(mapper.readValue(file.toFile(), ImportJob.class));
+        } catch (JacksonException ex) {
+            // 06 v1（草稿链路）留下的目录：status 为 DRAFT/PARSED/UPLOADED 等已删除的枚举值，
+            // 在 v2 语义下没有可用产物。按「不存在」处理，详情/下载统一走 404，不抛 500。
+            log.debug("忽略旧版本任务（状态值已废弃）: {} ({})", jobId, ex.getOriginalMessage());
+            return Optional.empty();
+        }
     }
 
     /** 全部任务（按创建时间倒序）。 */
@@ -78,7 +87,8 @@ public class ImportStore {
                         jobs.add(mapper.readValue(file.toFile(), ImportJob.class));
                     }
                 } catch (IOException ex) {
-                    log.warn("读取任务失败，跳过: {} ({})", dir, ex.getMessage());
+                    // 旧版本目录（06 v1）读不出来属预期，静默跳过，避免每次列表刷屏 WARN
+                    log.debug("跳过不可读任务目录（可能为旧版本）: {} ({})", dir.getFileName(), ex.getMessage());
                 }
             });
         }
@@ -120,10 +130,16 @@ public class ImportStore {
     public ImportJobSummary summarize(ImportJob job, Instant now) {
         long remaining = Math.max(0,
                 config.retentionDays() - Duration.between(job.createdAt(), now).toDays());
-        int parsed = (int) job.pages().stream()
-                .filter(p -> p.status() != PageStatus.PENDING).count();
+        ImportFileRef first = job.files().isEmpty() ? null : job.files().get(0);
+        ImportStats stats = job.stats();
         return new ImportJobSummary(
-                job.jobId(), job.status(), job.files().size(), parsed,
-                job.drafts().size(), job.createdAt(), remaining);
+                job.jobId(),
+                job.status(),
+                first == null ? "" : first.name(),
+                stats == null ? 0 : stats.pageCount(),
+                stats == null ? 0 : stats.tableCount(),
+                stats == null ? 0 : stats.modelCount(),
+                job.createdAt(),
+                remaining);
     }
 }

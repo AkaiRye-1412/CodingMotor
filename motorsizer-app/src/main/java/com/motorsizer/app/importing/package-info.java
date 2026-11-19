@@ -1,11 +1,12 @@
 /**
- * 样册识别模块（06 设计，接口 I1–I13；P0 已实现，P1 OCR 待接入）。
+ * 样册转 Excel 模块（06 v2，2026-11-19 改版）。
  *
- * <p>职责：导入任务状态机、PDF 文本层页面解析（含多列对照表，Q1）、字段映射（别名入 K2，Q2）、
- * 草稿编辑与批量提交（逐条独立事务，Q4）。临时文件位于 {@code %APPDATA%\MotorSizer\imports}，
- * 任务与草稿存 {@code job.json}，不落数据库；启动期 30 天惰性清理（Q3）。
+ * <p>职责：接收上传的一个样册 PDF，用坐标级版面解析（表头中心线定列、底色块定分节）
+ * 识别参数表，输出 xlsx（参数汇总 / 每型号原版式 / 脚注说明 / 识别报告）。
  *
- * <p>边界：只通过 S1 的保存用例写电机库（复用 C3 校验与事务，{@link com.motorsizer.app.service.MotorService#create}）；
- * 不触碰 K1/K3/S3/S4；字段 schema 来自 K2。图片/扫描页（无文本层）返回 OCR_REQUIRED，待 P1 Tess4J 接入。
+ * <p>边界：**不写电机库**——草稿、字段校验、勾选提交、入库等链路已按用户要求取消，
+ * 电机库仍由手工录入维护；解析算法在 {@code importing.render}，与
+ * {@code .workbuddy/tmp/pdf2excel.py} 保持一一对应。任务与产物存
+ * {@code %APPDATA%\MotorSizer\imports\{jobId}\}，不落数据库，启动期 30 天惰性清理。
  */
 package com.motorsizer.app.importing;

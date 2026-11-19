@@ -256,12 +256,12 @@ function formatServerMessage(error: ApiError): string {
         <el-button type="primary" @click="openManual">打开手工录入表单</el-button>
       </div>
       <div class="import-step import-step-later">
-        <h4>通道 2：样册识别（PDF / 图片）</h4>
+        <h4>通道 2：样册转 Excel（PDF）</h4>
         <p>
-          上传 PDF 或图片 → 逐型号生成<b>草稿</b> → 标注来源页 → 人工核对确认后才入库。
-          <b>绝不静默写库</b>。
+          上传样册 PDF → 按坐标解析参数表 → <b>导出 Excel</b>（参数汇总 / 每型号原版式 / 脚注 / 识别报告）。
+          核对后的数据再用通道 1 手工录入。本通道<b>不写电机库</b>。
         </p>
-        <el-button type="primary" @click="importVisible = true">上传样册</el-button>
+        <el-button type="primary" @click="importVisible = true">上传样册 PDF</el-button>
       </div>
     </div>
 

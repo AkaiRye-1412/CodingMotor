@@ -19,11 +19,8 @@ public enum ErrorCode {
     REPORT_ALL_UNCOMPUTABLE(HttpStatus.BAD_REQUEST, "全部方案都无法计算"),
 
     IMPORT_JOB_NOT_FOUND(HttpStatus.NOT_FOUND, "导入任务不存在或已清理"),
-    IMPORT_PAGE_NOT_FOUND(HttpStatus.NOT_FOUND, "页面不存在"),
-    IMPORT_DRAFT_NOT_FOUND(HttpStatus.NOT_FOUND, "草稿不存在"),
-    IMPORT_FILE_REJECTED(HttpStatus.BAD_REQUEST, "文件类型/大小/数量不合法"),
-    IMPORT_OCR_REQUIRED(HttpStatus.BAD_REQUEST, "该页无文本层，需要 OCR 组件（后续版本）"),
-    IMPORT_NOTHING_TO_COMMIT(HttpStatus.BAD_REQUEST, "没有勾选任何草稿");
+    IMPORT_FILE_REJECTED(HttpStatus.BAD_REQUEST, "请上传一个可读取的 PDF 文件"),
+    IMPORT_CONVERT_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "PDF 解析失败，未能生成 Excel");
 
     private final HttpStatus httpStatus;
     private final String defaultMessage;
