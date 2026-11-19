@@ -129,10 +129,17 @@ app_image = os.path.join(DIST, "MotorSizer")
 print("  app-image:", app_image)
 
 # jpackage 生成的 MotorSizer.exe 改名为 MotorSizerBackend.exe（后备：浏览器模式）
+# 注意：jpackage 启动器会按 exe 同名去 app/ 下找 <名字>.cfg，改名 exe 必须同步改 cfg，
+# 否则 MotorSizerBackend.exe 启动报 "Error opening ...MotorSizerBackend.cfg: No such file"。
 jp_exe = os.path.join(app_image, "MotorSizer.exe")
 backend_exe = os.path.join(app_image, "MotorSizerBackend.exe")
 if os.path.exists(jp_exe):
     shutil.move(jp_exe, backend_exe)
+    cfg_src = os.path.join(app_image, "app", "MotorSizer.cfg")
+    cfg_dst = os.path.join(app_image, "app", "MotorSizerBackend.cfg")
+    if os.path.exists(cfg_src):
+        shutil.move(cfg_src, cfg_dst)
+        print("  app/MotorSizer.cfg → app/MotorSizerBackend.cfg（与改名后启动器对齐）")
     print("  jpackage launcher → MotorSizerBackend.exe（后备浏览器模式）")
 
 # MotorSizerLoader.exe 作为主入口 MotorSizer.exe

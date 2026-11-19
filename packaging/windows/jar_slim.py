@@ -60,7 +60,7 @@ def slim_nested_native(jar_bytes):
 
 
 def slim_fat_jar(src_jar, dst_jar):
-    """复制 fat jar，顺带裁掉 onnxruntime 的多平台原生库；返回 (新大小, 旧大小)。"""
+    """复制 fat jar，顺带裁掉 onnxruntime 的多平台原生库；返回新大小（字节）。"""
     with zipfile.ZipFile(src_jar) as zin, \
             zipfile.ZipFile(dst_jar, "w", zipfile.ZIP_DEFLATED, allowZip64=True) as zout:
         for item in zin.infolist():
@@ -73,7 +73,7 @@ def slim_fat_jar(src_jar, dst_jar):
                 zout.writestr(zi, data)
             else:
                 _copy_entry(zin, zout, item)
-    return os.path.getsize(dst_jar), os.path.getsize(src_jar)
+    return os.path.getsize(dst_jar)
 
 
 if __name__ == "__main__":

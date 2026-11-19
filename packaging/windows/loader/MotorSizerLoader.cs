@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
+using System.Net;
 using System.Threading;
 using System.Windows.Forms;
 using Microsoft.Web.WebView2.Core;
@@ -111,7 +112,9 @@ namespace MotorSizer
                 return 3;
             }
 
-            // 轮询 app.port
+            // 轮询端口文件 → 拿到端口后 HTTP 探活（直到后端真正可连接），避免首次打开 ERR_CONNECTION_REFUSED。
+            // 注意：app.port 在 WebServerInitializedEvent 就写入，但 Tomcat 端口此刻未必能立刻接受连接
+            // （且该文件可能是上一实例残留），因此必须对 /api/health 探活成功才算就绪。
             string appData = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MotorSizer");
             string portFile = Path.Combine(appData, "app.port");
@@ -137,8 +140,23 @@ namespace MotorSizer
                 if (p > 0)
                 {
                     port = p;
-                    Log("端口就绪=" + port + " (等待 " + (i + 1) + " 次)");
-                    break;
+                    Log("端口文件就绪=" + port + " (等待 " + (i + 1) + " 次)，开始 HTTP 探活");
+                    // 端口文件出现不代表可连接，继续对 /api/health 探活直到成功
+                    if (WaitUntilHealthy(port, 120, backend))
+                    {
+                        Log("HTTP 探活成功，后端已就绪");
+                        break;
+                    }
+                    // 探活超时但后端未退出：可能是端口文件残留，回到外层继续轮询
+                    if (backend.HasExited)
+                    {
+                        Log("探活期间后端退出，继续外层轮询");
+                        continue;
+                    }
+                    MessageBox.Show("后端已启动但长时间无响应。\n日志：" + Path.Combine(appData, "logs", "motorsizer.log"),
+                        "MotorSizer 启动错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    try { if (!backend.HasExited) backend.Kill(); } catch { }
+                    return 5;
                 }
                 Thread.Sleep(500);
             }
@@ -184,6 +202,41 @@ namespace MotorSizer
                 return int.TryParse(s, out p) ? p : 0;
             }
             catch { return 0; }
+        }
+
+        // 对后端 /api/health 做 HTTP 探活，直到返回 200 或超时/后端退出。
+        private static bool WaitUntilHealthy(int port, int maxTries, Process backend)
+        {
+            string url = "http://127.0.0.1:" + port + "/api/health";
+            for (int i = 0; i < maxTries; i++)
+            {
+                if (backend.HasExited)
+                {
+                    Log("探活时后端已退出, exitCode=" + backend.ExitCode);
+                    return false;
+                }
+                try
+                {
+                    HttpWebRequest req = (HttpWebRequest)WebRequest.Create(url);
+                    req.Timeout = 1000;
+                    req.Method = "GET";
+                    using (HttpWebResponse resp = (HttpWebResponse)req.GetResponse())
+                    {
+                        if ((int)resp.StatusCode == 200)
+                        {
+                            return true;
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // 连接被拒/超时等，继续等待
+                    if (i == 0 || i % 10 == 9)
+                        Log("探活失败(" + (i + 1) + "): " + ex.GetType().Name);
+                }
+                Thread.Sleep(500);
+            }
+            return false;
         }
     }
 

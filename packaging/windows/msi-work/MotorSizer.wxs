@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="*"
+           Name="MotorSizer"
+           Language="2052"
+           Manufacturer="Akribis"
+           Version="1.0.0"
+           UpgradeCode="8C7A9D2E-6F1B-4A3E-9B5C-1D2E3F4A5B6C">
+
+    <Package InstallerVersion="500"
+             Compressed="yes"
+             InstallScope="perMachine"
+             Platform="x64"
+             Description="MotorSizer 电机选型工具"
+             Manufacturer="Akribis"
+             Languages="2052" />
+
+    <!-- 主升级：同 UpgradeCode 的旧版本先卸载 -->
+    <MajorUpgrade DowngradeErrorMessage="已安装更新的版本，无法降级安装。"
+                  AllowSameVersionUpgrades="yes" />
+
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- 安装目录：Program Files\MotorSizer -->
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFiles64Folder">
+        <Directory Id="INSTALLFOLDER" Name="MotorSizer" />
+      </Directory>
+      <!-- 桌面快捷方式 -->
+      <Directory Id="DesktopFolder" />
+      <!-- 开始菜单 -->
+      <Directory Id="ProgramMenuFolder">
+        <Directory Id="ApplicationProgramsFolder" Name="MotorSizer" />
+      </Directory>
+    </Directory>
+
+    <!-- 文件组件由 heat 生成，这里只声明 ComponentGroup 引用 -->
+    <Feature Id="MainFeature" Title="MotorSizer" Level="1">
+      <ComponentGroupRef Id="AppFilesGroup" />
+      <ComponentRef Id="AppShortcutComponent" />
+    </Feature>
+
+    <!-- 快捷方式组件：指向安装目录里的 MotorSizer.exe（loader 主入口） -->
+    <DirectoryRef Id="ApplicationProgramsFolder">
+      <Component Id="AppShortcutComponent" Guid="*">
+        <Shortcut Id="StartMenuShortcut"
+                  Name="MotorSizer"
+                  Description="MotorSizer 电机选型工具"
+                  Target="[INSTALLFOLDER]MotorSizer.exe"
+                  WorkingDirectory="INSTALLFOLDER" />
+        <Shortcut Id="DesktopShortcut"
+                  Directory="DesktopFolder"
+                  Name="MotorSizer"
+                  Description="MotorSizer 电机选型工具"
+                  Target="[INSTALLFOLDER]MotorSizer.exe"
+                  WorkingDirectory="INSTALLFOLDER" />
+        <RemoveFolder Id="RemoveApplicationProgramsFolder"
+                      Directory="ApplicationProgramsFolder"
+                      On="uninstall" />
+        <RegistryValue Root="HKCU"
+                       Key="Software\Akribis\MotorSizer"
+                       Name="installed"
+                       Type="integer"
+                       Value="1"
+                       KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+
+    <Icon Id="app.ico" SourceFile="$(var.IconDir)\motorsizer.ico" />
+
+    <!-- 标准 UI：安装向导 -->
+    <UIRef Id="WixUI_InstallDir" />
+    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
+
+    <UI>
+      <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="InstallDirDlg" Order="2">1</Publish>
+      <Publish Dialog="InstallDirDlg" Control="Back" Event="NewDialog" Value="WelcomeDlg" Order="2">1</Publish>
+    </UI>
+
+    <!-- 应用图标显示 -->
+    <Property Id="ARPPRODUCTICON" Value="app.ico" />
+  </Product>
+</Wix>
