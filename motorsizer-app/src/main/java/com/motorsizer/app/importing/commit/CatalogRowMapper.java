@@ -57,6 +57,11 @@ public class CatalogRowMapper {
     /** 未带接法的型号（以及全部型号，见 {@link #keyOf}）用的配置名。 */
     private static final String CONFIG_DEFAULT = "默认";
 
+    /** 质量换算：样册的 g 落成内部 kg（CAL-25）。 */
+    private static final BigDecimal GRAM_TO_KG = new BigDecimal("0.001");
+
+    private static final BigDecimal KILOGRAM_TO_GRAM = new BigDecimal("1000");
+
     /** 按型号分组保序映射；同一个型号的多次出现只出一台电机。 */
     public List<MappedMotor> map(List<CatalogSummarySheet.SheetRow> rows) {
         Map<String, List<CatalogSummarySheet.SheetRow>> byModel = new LinkedHashMap<>();
@@ -433,21 +438,26 @@ public class CatalogRowMapper {
     }
 
     /**
-     * 录入单位 → 内部单位的换算系数（K2 {@code factor}）。
+     * 样册行单位 → 内部单位的换算系数。
      *
-     * <p>只有音圈质量是 {@code g → kg}（factor 0.001）。样册直接给 kg 时不再乘，避免差 1000 倍。
+     * <p>2026-11-20（CAL-25）：模板里「录入单位 = 内部单位」已无一例外（音圈质量也按 kg），
+     * 换算**只在入库这一层按样册自己写的单位做**——样册「线圈质量 mcoil g 72.9」要落成
+     * {@code 0.0729 kg}，而「mcn kg 1.1」原样落 {@code 1.1 kg}。此前靠模板 {@code factor}
+     * 把 g 当录入单位，导致参数表出现「值 0.0729 / 单位 g」这种半截换算（AVM20-HF-35）。
+     *
+     * <p>目前只涉及质量（{@code g → kg}）；其余字段的样册单位与内部单位本就一致，返回 1。
+     * 样册没写单位时按内部单位理解——不猜。
      */
     private static BigDecimal scaleOf(MotorField field, String unit) {
-        BigDecimal factor = field.factor() == null ? BigDecimal.ONE : field.factor();
-        if (factor.compareTo(BigDecimal.ONE) == 0) {
-            return BigDecimal.ONE;
-        }
+        String internal = field.unit() == null ? "" : field.unit().strip().toLowerCase(java.util.Locale.ROOT);
         String actual = unit == null ? "" : unit.strip().toLowerCase(java.util.Locale.ROOT);
-        if (actual.isEmpty()) {
-            return factor;                          // 没有单位列 → 按录入单位理解
+        if (internal.equals("kg") && (actual.equals("g") || actual.equals("gram") || actual.equals("克"))) {
+            return GRAM_TO_KG;
         }
-        String expected = field.unit() == null ? "" : field.unit().strip().toLowerCase(java.util.Locale.ROOT);
-        return actual.equals(expected) ? factor : BigDecimal.ONE;
+        if (internal.equals("g") && actual.equals("kg")) {
+            return KILOGRAM_TO_GRAM;               // 兜底：模板将来若真按 g 定义
+        }
+        return BigDecimal.ONE;
     }
 
     // ---------------------------------------------------------------- 主键

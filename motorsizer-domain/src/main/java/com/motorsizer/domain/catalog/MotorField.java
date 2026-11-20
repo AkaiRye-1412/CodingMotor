@@ -8,9 +8,9 @@ import java.util.List;
  *
  * @param key      接口字段名 / 数据库列（驼峰）
  * @param label    录入表单与参数表共用的标签；可含 {@code {cool}} 冷却方式占位符
- * @param unit     录入单位（同时也是内部单位；音圈的 g 由 factor 换算）
+ * @param unit     单位，**同时就是内部单位**（三套模板全为 1:1，音圈质量也是 kg，CAL-25）
  * @param required 是否必填。该标记是「入库门槛 = 准入门槛 = 星标」的唯一来源（C-B）
- * @param factor   录入单位 → 内部单位的换算系数
+ * @param factor   录入单位 → 内部单位的换算系数；CAL-25 起恒为 1（样册 g→kg 改由入库层按行单位换算）
  * @param display  出现位置：{@code detail}（M8 参数表）/{@code form}（M10 录入表单）
  * @param aliases  样册识别用的别名（Q2 裁定，随 A1 下发）；可为空。样册常见变体如 R25 ↔ 相间电阻
  * @param symbol   样册参数表里的物理符号（如 Tcn/Kt/R25），是识别的一等匹配键（优先级高于别名）。

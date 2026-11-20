@@ -265,6 +265,15 @@ public class CalculationService {
                 .noneMatch(s -> MotorSeries.matches(motor.modelName(), s, known));
     }
 
+    /**
+     * M8「选入电机数据」的参数表（同时供 PDF 报告使用）。
+     *
+     * <p>口径（2026-11-20 用户裁定）：「只显示要求识别（采集）的参数」——表里的行必须能
+     * 在样册/图纸参数表里找到对应项，即模板里带别名的识别字段（{@code showsInDetail}）。
+     * **额定功率 / 最大功率不出现在这里**：它们是 {@code I²R} 折算出来的派生量、
+     * 样册上一个字都没有，属于「其他」。派生值仍由 C2 的 {@code spec.derived} 返回，
+     * 不影响任何计算，只在展示层不列。
+     */
     private List<CalculationResponse.MotorParameter> parameters(CalculationMotor motor) {
         MotorTypeTemplate template = MotorCatalogTemplates.of(motor.motorType());
         List<CalculationResponse.MotorParameter> rows = new ArrayList<>();
@@ -289,15 +298,6 @@ public class CalculationService {
             rows.add(new CalculationResponse.MotorParameter(
                     field.key(), coolLabel(field.label(), motor.cooling()), field.unit(), value, derived));
         }
-
-        rows.add(new CalculationResponse.MotorParameter(
-                "prated", "额定功率", "W",
-                decimalToDouble(motor.derived().prated()),
-                motor.derived().prated() != null));
-        rows.add(new CalculationResponse.MotorParameter(
-                "pmax", "最大功率", "W",
-                decimalToDouble(motor.derived().pmax()),
-                motor.derived().pmax() != null));
 
         return rows;
     }
@@ -387,10 +387,6 @@ public class CalculationService {
                 * UnitConversions.accelerationFactor(input.axis())
                 + input.resistance()
                 + ForceCalculator.gravityTerm(input.axis(), input.load(), input.tiltDeg());
-    }
-
-    private static Double decimalToDouble(BigDecimal value) {
-        return value == null ? null : value.doubleValue();
     }
 
     private record EvaluatedMotor(CalculationMotor motor, MotorEvaluation evaluation) {

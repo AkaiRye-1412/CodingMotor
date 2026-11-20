@@ -200,8 +200,8 @@ CREATE TABLE IF NOT EXISTS motor_coil_spec (
     pn                  DECIMAL(18,6)            COMMENT '持续热功率 (W)',
 
     -- ===== 机械参数 / 选填 =====
-    mover_mass          DECIMAL(18,6)            COMMENT '线圈质量 (kg)；录入单位为 g，由 K2 factor 换算后入库',
-    core_mass           DECIMAL(18,6)            COMMENT '铁芯质量 (kg)；录入单位为 g，需 K2 补充换算系数（见文档待确认项）',
+    mover_mass          DECIMAL(18,6)            COMMENT '线圈质量 (kg)；录入/显示也是 kg，样册写 g 时入库自动 ÷1000（CAL-25）',
+    core_mass           DECIMAL(18,6)            COMMENT '铁芯质量 (kg)；录入/显示也是 kg，样册写 g 时入库自动 ÷1000（CAL-25）',
     gap                 DECIMAL(18,6)            COMMENT '运动间隙 (mm)',
 
     -- ===== 准入补充 / 选填 =====

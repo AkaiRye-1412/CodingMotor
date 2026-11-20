@@ -118,11 +118,16 @@ class CalculationApiTest {
         assertThat(isNullOrMissing(selected.path("outOfRangeReason"))).isTrue();
 
         JsonNode parameters = selected.path("parameters");
-        assertThat(parameters).hasSize(13);
+        // 2026-11-20：直线模板有 11 个「识别」字段进参数表（9 项性能参数 + 线圈质量/长度），
+        // 派生的「额定功率 / 最大功率」不再出现——样册上识别不到的东西不展示。
+        assertThat(parameters).hasSize(11);
+        List<String> keys = new ArrayList<>();
+        parameters.forEach(parameter -> keys.add(parameter.path("key").asText()));
+        assertThat(keys).doesNotContain("prated", "pmax");
         JsonNode km = findByKey(parameters, "km");
         assertThat(km.path("derived").asBoolean()).isTrue();
         assertThat(km.path("value").asDouble()).isGreaterThan(0);
-        assertThat(findByKey(parameters, "prated").path("unit").asText()).isEqualTo("W");
+        assertThat(findByKey(parameters, "moverMass").path("unit").asText()).isEqualTo("kg");
 
         JsonNode applied = selected.path("applied");
         assertThat(applied.path("thermalVerdict").asText()).isEqualTo("pass");

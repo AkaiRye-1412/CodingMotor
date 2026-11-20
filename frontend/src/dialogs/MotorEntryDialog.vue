@@ -15,7 +15,7 @@ import type { FieldSpec, TypeTemplate } from '@/types/template'
  * <p>对齐冻结原型 manualModal（第 38/50/51 轮）：
  * 必填项组内前置；标签 {cool} 随冷却方式实时替换；类型切换保留已填值并重建模板；
  * 保存校验（标红 / 聚焦首项 / 补填实时刷新 / 按钮禁用）；主键重复拒绝。
- * 音圈 g→kg 等单位换算按模板 factor 在前端完成（I-9），业务校验仍在服务端（C3）。
+ * 单位与内部单位一致（CAL-25：音圈质量也按 kg 录入），factor 机制保留但恒为 1；业务校验仍在服务端（C3）。
  *
  * <p>2026-11-19 增补：支持 `prefill`——样册入库结果里被跳过的电机，点「补全参数」直接在这里
  * 打开同一张表单，参数已按样册预填，补齐保存即写入电机库（来源记为「识别草稿」）。
@@ -259,7 +259,7 @@ async function handleSave(): Promise<void> {
   const tpl = template.value
   if (!tpl || !templates.value) return
 
-  // 按录入单位 → 内部单位写库（音圈线圈质量 g → kg，见字段 factor）
+  // 按录入单位 → 内部单位写库；CAL-25 起模板 unit 就是内部单位、factor 恒为 1（音圈质量也填 kg）
   const spec: Record<string, number> = {}
   for (const group of fieldGroups.value) {
     for (const field of group.fields) {

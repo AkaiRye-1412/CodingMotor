@@ -396,8 +396,9 @@ public class ReportService {
         }
         List<ReportModel.ReportRow> parameters = new ArrayList<>();
         for (CalculationResponse.MotorParameter parameter : selected.parameters()) {
-            int digits = ("prated".equals(parameter.key()) || "pmax".equals(parameter.key())) ? 1 : 4;
-            parameters.add(row(parameter.label(), fmt(parameter.value(), digits), parameter.unit()));
+            // 2026-11-20：参数表只剩「要求识别（采集）的参数」，派生功率已不进列表，
+            // 因此统一 4 位小数即可，不再为 prated/pmax 单独降精度。
+            parameters.add(row(parameter.label(), fmt(parameter.value(), 4), parameter.unit()));
         }
         boolean recommended = selected.inRecommendation();
         return new ReportModel.SelectedView(

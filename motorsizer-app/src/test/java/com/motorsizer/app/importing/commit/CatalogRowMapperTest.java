@@ -52,7 +52,12 @@ class CatalogRowMapperTest {
                 .containsEntry("torqueCont", new BigDecimal("3.4"));
     }
 
-    /** 音圈样册：{@code 行程} 只有音圈模板有；质量按 g 录入、内部存 kg。 */
+    /**
+     * 音圈样册：{@code 行程} 只有音圈模板有；质量样册写 g、库里一律存 kg。
+     *
+     * <p>2026-11-20（CAL-25）：g→kg 不再靠模板 factor，而是入库时**按样册行单位**换算
+     * （模板单位已统一为 kg）。样册写 kg 的原样落库，见 {@link #keepsCoilMassGivenInKilograms}。
+     */
     @Test
     void mapsCoilCatalogAndConvertsGramToKilogram() {
         List<CatalogSummarySheet.SheetRow> rows = List.of(
@@ -75,8 +80,52 @@ class CatalogRowMapperTest {
         assertThat(motor.configName()).isEqualTo("默认");
         assertThat(motor.missing()).isEmpty();
         assertThat(motor.spec()).containsEntry("stroke", new BigDecimal("8"))
-                // 45 g → 0.045 kg（K2 factor 0.001），差 1000 倍会直接影响惯量计算
+                // 45 g → 0.045 kg（按样册行单位换算），差 1000 倍会直接影响惯量计算
                 .containsEntry("moverMass", new BigDecimal("0.045"));
+    }
+
+    /**
+     * 同一种质量的两种样册写法必须落成同一个内部值：{@code g} 换 kg、{@code kg} 原样。
+     *
+     * <p>AVM20-HF-35 的样册写「线圈质量 mcoil g 72.9」，此前靠模板 factor 换算出 0.0729，
+     * 但参数表的单位仍写 g —— 界面成了「0.0729 g」。现在模板单位就是 kg，值由本层归一，
+     * 显示与库内一致。
+     */
+    @Test
+    void keepsCoilMassGivenInKilograms() {
+        List<CatalogSummarySheet.SheetRow> rows = new ArrayList<>(coilRowsInGrams());
+        // 把 g 那一行换成 kg 写法（同一个线圈，72.9 g = 0.0729 kg）
+        rows.removeIf(r -> "线圈质量".equals(r.name()));
+        rows.add(row("AVM20-HF-35", "机械参数", "线圈质量", "mcoil", "kg", "0.0729"));
+
+        CatalogRowMapper.MappedMotor motor = mapper.map(rows).get(0);
+
+        assertThat(motor.type()).isEqualTo(MotorType.COIL);
+        assertThat(motor.spec()).containsEntry("moverMass", new BigDecimal("0.0729"));
+    }
+
+    /** 真实样册那台 AVM20-HF-35：{@code 72.9 g} 必须落成 {@code 0.0729 kg}。 */
+    @Test
+    void convertsSampleGramValueOfAvm20() {
+        CatalogRowMapper.MappedMotor motor = mapper.map(coilRowsInGrams()).get(0);
+
+        assertThat(motor.spec()).containsEntry("moverMass", new BigDecimal("0.0729"));
+    }
+
+    private static List<CatalogSummarySheet.SheetRow> coilRowsInGrams() {
+        return List.of(
+                row("AVM20-HF-35", "性能参数", "行程", "Stroke", "mm", "35.0"),
+                row("AVM20-HF-35", "性能参数", "持续推力 @100°C", "Fcn", "N", "4.80"),
+                row("AVM20-HF-35", "性能参数", "峰值推力", "Fpk", "N", "23.9"),
+                row("AVM20-HF-35", "性能参数", "力常数 ±10%", "Kf", "N/A", "3.43"),
+                row("AVM20-HF-35", "性能参数", "反电势常数 ±10%", "Ke", "V/(m/s)", "3.43"),
+                row("AVM20-HF-35", "性能参数", "电阻 @25°C ±10%", "R25", "Ω", "4.80"),
+                row("AVM20-HF-35", "性能参数", "持续电流 @100°C", "Icn", "A", "1.4"),
+                row("AVM20-HF-35", "性能参数", "峰值电流", "Ipk", "A", "7.0"),
+                row("AVM20-HF-35", "性能参数", "最高线圈温度", "Tmax", "°C", "100"),
+                row("AVM20-HF-35", "性能参数", "热耗散常数", "Kth", "W/°C", "0.162"),
+                row("AVM20-HF-35", "性能参数", "最高电压", "Ubus", "Vdc", "60"),
+                row("AVM20-HF-35", "机械参数", "线圈质量", "mcoil", "g", "72.9"));
     }
 
     /**

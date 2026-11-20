@@ -15,7 +15,8 @@ import java.util.Set;
  * <ol>
  *   <li>{@code required} 标记同时驱动保存校验、准入判定与星标，必须唯一来源（C-B）；</li>
  *   <li>字段 key 必须与数据库列（驼峰化）完全一致，否则 C2/C3 无法映射；</li>
- *   <li>单位以「录入单位 = 内部单位」为口径，仅音圈质量用 {@code factor} 换算；</li>
+ *   <li>单位以「录入单位 = 内部单位」为口径，**三套模板无一例外**（音圈质量也是 kg，CAL-25）；
+ *       样册给 g 时由入库层按行单位换算，模板不再声明 factor；</li>
  *   <li>{@code aliases} 为样册识别用别名（06 §6 Q2），随 A1 下发，不影响录入与计算。</li>
  * </ol>
  */
@@ -55,15 +56,9 @@ public final class MotorCatalogTemplates {
         return new MotorField(key, label, unit, true, ONE, FORM_ONLY, NO_ALIASES, null);
     }
 
-    /** 仅录入表单显示，并按 factor 把录入单位换算为内部单位。 */
-    private static MotorField formOnly(String key, String label, String unit, BigDecimal factor) {
-        return new MotorField(key, label, unit, false, factor, FORM_ONLY, NO_ALIASES, null);
-    }
-
-    /** 表单 + 参数表都显示，并按 factor 把录入单位换算为内部单位。 */
-    private static MotorField both(String key, String label, String unit, BigDecimal factor) {
-        return new MotorField(key, label, unit, false, factor, DETAIL_AND_FORM, NO_ALIASES, null);
-    }
+    // 2026-11-20（CAL-25）：不再提供「带 factor 的工厂方法」——三套模板的单位已全部
+    // 等于内部单位（音圈质量也按 kg），换算只发生在样册入库层（按行单位 g→kg）。
+    // 留着重载会诱导后人再把「录入单位 ≠ 内部单位」写回模板里。
 
     // 直线 / 力矩共用的别名（同 key 在两套模板里语义一致，C-B 不变量）
     // 中文写法 + 英文/缩写，覆盖国内外样册常见排版
@@ -273,9 +268,12 @@ public final class MotorCatalogTemplates {
                             formOnlyRequired("uBus", "最高电压", "Vdc").withAliases(A_UBUS).withSymbol("Ubus")
                     )),
                     new MotorFieldGroup(GROUP_MECHANICAL, false, List.of(
-                            // 音圈机械参数按 g 录入，内部统一按 kg 计算（第 63 轮 Q4）
-                            both("moverMass", "线圈质量", "g", new BigDecimal("0.001")).withAliases(A_MOVER_MASS),
-                            both("coreMass", "铁芯质量", "g", new BigDecimal("0.001")).withAliases(A_CORE_MASS),
+                            // 2026-11-20（CAL-25）：音圈质量**单位与内部单位统一为 kg**，不再用 factor 把 g 换成 kg。
+                            // 这样录入表单、电机库详情、「选入电机数据」参数表、报告全显示 kg，不会出现
+                            // 「值已换算成 0.0729、单位还写着 g」的双重错误。样册给 g 时由入库层
+                            // （CatalogRowMapper.scaleOf）按行单位自动 ÷1000。
+                            both("moverMass", "线圈质量", "kg").withAliases(A_MOVER_MASS),
+                            both("coreMass", "铁芯质量", "kg").withAliases(A_CORE_MASS),
                             both("gap", "运动间隙", "mm").withAliases(A_GAP)
                     )),
                     new MotorFieldGroup(GROUP_ADOPTION, true, List.of(

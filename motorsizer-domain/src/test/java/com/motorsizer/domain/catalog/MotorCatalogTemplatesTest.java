@@ -45,23 +45,25 @@ class MotorCatalogTemplatesTest {
         }
     }
 
+    /**
+     * 2026-11-20（CAL-25）：三套模板的 {@code unit} 一律等于内部单位 —— 音圈质量也是 kg、
+     * {@code factor} 恒为 1。样册给 g 时的换算只发生在入库层（{@code CatalogRowMapper.scaleOf}），
+     * 模板不再承担「录入单位 ≠ 内部单位」。
+     *
+     * <p>用户原话：AVM20-HF-35 的参数表显示「线圈质量 0.0729 g」——值已经按 g→kg 换算了，
+     * 单位却还是 g，**半截换算**比不换算更误导。现在统一按 kg。
+     */
     @Test
-    void onlyVoiceCoilMassFieldsNeedFactorConversion() {
-        Map<String, BigDecimal> factors = Map.of(
-                "moverMass", new BigDecimal("0.001"),
-                "coreMass", new BigDecimal("0.001"));
-
-        MotorTypeTemplate coil = MotorCatalogTemplates.of(MotorType.COIL);
-        assertThat(coil.field("moverMass").orElseThrow().factor()).isEqualByComparingTo("0.001");
-        assertThat(coil.field("coreMass").orElseThrow().factor()).isEqualByComparingTo("0.001");
-        factors.forEach((key, factor) ->
-                assertThat(coil.field(key).orElseThrow().factor()).isEqualByComparingTo(factor));
-
-        for (MotorType type : List.of(MotorType.LINEAR, MotorType.TORQUE)) {
+    void everyTemplateUnitIsAlsoInternalUnit() {
+        for (MotorType type : MotorType.values()) {
             MotorCatalogTemplates.of(type).fields().forEach(field ->
-                    assertThat(field.factor()).as("%s.%s factor", type, field.key())
+                    assertThat(field.factor()).as("%s.%s factor 必须为 1", type, field.key())
                             .isEqualByComparingTo(BigDecimal.ONE));
         }
+
+        MotorTypeTemplate coil = MotorCatalogTemplates.of(MotorType.COIL);
+        assertThat(coil.field("moverMass").orElseThrow().unit()).isEqualTo("kg");
+        assertThat(coil.field("coreMass").orElseThrow().unit()).isEqualTo("kg");
     }
 
     /** 第 66 轮：三套模板的「最高速度 / 最高转速」一律选填，缺项只跳过准入②。 */

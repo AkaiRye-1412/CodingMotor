@@ -33,15 +33,14 @@ const selectedNotInCandidates = computed(
 const parameterRows = computed(() => {
   const motor = selected.value
   if (!motor) return []
+  // 服务端只下发「样册/图纸里识别得到的参数」（模板 detail 字段），
+  // 派生功率（额定/最大）不在其中，前端不再做精度特判。
   return motor.parameters.map((parameter) => ({
     key: parameter.key,
     label: parameter.label,
     unit: parameter.unit,
     derived: parameter.derived,
-    displayValue: formatNumber(
-      parameter.value,
-      parameter.key === 'prated' || parameter.key === 'pmax' ? 1 : 4,
-    ),
+    displayValue: formatNumber(parameter.value, 4),
   }))
 })
 
@@ -108,7 +107,7 @@ function handleSelect(value: number): void {
     </el-table>
 
     <div v-else class="section-placeholder">
-      选中电机后在此展示服务端按模板裁剪的参数表（含 Km / 额定功率等派生项）。
+      选中电机后在此展示样册识别到的参数（Km 缺失时按铜耗派生，标「派生」）。
     </div>
   </div>
 </template>
