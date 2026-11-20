@@ -6,7 +6,7 @@ import { formatNumber } from '@/utils/format'
 
 const props = withDefaults(
   defineProps<{
-    /** 内容区最小高度：保证模块底部与左列「用户输入」对齐。 */
+    /** 内容区最小高度：把内容撑满固定高度的面板（与窗口高度无关）。 */
     minHeight?: number | null
     /** 参数表最大高度：超出时表格内部出现竖向滚动条。 */
     tableMaxHeight?: number | null
@@ -86,7 +86,6 @@ function handleSelect(value: number): void {
       border
       class="motor-param-table"
       :max-height="props.tableMaxHeight ?? undefined"
-      scrollbar-always-on
     >
       <el-table-column prop="label" label="参数">
         <template #default="{ row }">
@@ -113,12 +112,21 @@ function handleSelect(value: number): void {
 </template>
 
 <style scoped>
+/* 面板高度固定（--ms-module-h）：下拉框占固定高度，参数表吃掉剩下的并自己滚 */
+.motor-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
 .motor-select {
+  flex: 0 0 auto;
   width: 100%;
   margin-bottom: 8px;
 }
 
 .out-of-range {
+  flex: 0 0 auto;
   margin-bottom: 8px;
   padding: 4px 8px;
   border-radius: 4px;
@@ -130,6 +138,11 @@ function handleSelect(value: number): void {
 
 .derived-tag {
   margin-left: 5px;
+}
+
+/* 表格高度由 App 按固定面板高度下发（max-height），不参与拉伸 */
+.motor-param-table {
+  flex: 0 0 auto;
 }
 
 /* 表格可读性（第 63 轮）：与「电机实际应用值」表同一口径——表头加粗深灰、数值常规深墨 */

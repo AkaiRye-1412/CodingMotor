@@ -9,9 +9,9 @@ import { formatPercent } from '@/utils/format'
 
 const props = withDefaults(
   defineProps<{
-    /** 由 App 按左列底部动态计算，保证模块底部对齐；为空时用 CSS 兜底高度。 */
+    /** 由 App 按固定面板高度下发：列表可用高度，超出时列表内部滚动；为空时用 CSS 兜底。 */
     listMaxHeight?: number | null
-    /** 内容区最小高度，候选较少时也把面板撑到与「用户输入」底部齐平。 */
+    /** 内容区最小高度：把内容撑满固定高度的面板（与窗口高度无关）。 */
     minHeight?: number | null
   }>(),
   { listMaxHeight: null, minHeight: null },
@@ -133,7 +133,11 @@ function selectCandidate(motorId: number): void {
 </template>
 
 <style scoped>
+/* 面板高度固定（--ms-module-h）：筛选行占内容高度，列表吃掉剩下的并自己滚 */
 .candidate-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
   transition: opacity 0.2s ease;
 }
 
@@ -142,6 +146,7 @@ function selectCandidate(motorId: number): void {
 }
 
 .candidate-filters {
+  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -173,6 +178,9 @@ function selectCandidate(motorId: number): void {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  /* 兜底高度：JS 会按面板固定高度下发 max-height；这里保证任何情况下都能滚 */
+  flex: 1 1 auto;
+  min-height: 0;
   max-height: 460px;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -239,8 +247,14 @@ function selectCandidate(motorId: number): void {
   font-variant-numeric: tabular-nums;
 }
 
+/* 空态：面板高度固定后垂直居中，避免「暂无型号」挤在顶部、下面空一大片 */
 .empty-state {
-  padding-top: 4px;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 0;
+  padding-bottom: 16px;
 }
 
 .empty-tip {

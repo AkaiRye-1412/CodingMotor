@@ -18,6 +18,8 @@ public record CalculationRequest(
 
     public record Plan(
             Double load,
+            /** 电机自身质量/惯量：直线为线圈质量 kg，旋转为电机转动惯量 kg·m²（CAL-26）。 */
+            Double motorMass,
             Double distance,
             Double time,
             Double dwell,

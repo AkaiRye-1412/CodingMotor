@@ -20,6 +20,12 @@
   --ms-theory: #553a96;
   --ms-applied: #0d7585;
   --ms-radius: 6px;
+  /*
+   * 三列底部模块（用户输入 / 推荐电机 / 选入电机数据）的固定高度（第 87 轮）。
+   * 与窗口高度解耦：窗口变高变矮都不会拉伸它们，内容多了由内部列表/表格自己滚。
+   * 想整体调高调矮，只改这一处。
+   */
+  --ms-module-h: 480px;
 }
 
 html,
@@ -124,6 +130,12 @@ body {
   flex: 1;
   display: grid;
   grid-template-columns: 310px minmax(400px, 1fr) minmax(400px, 1fr);
+  /*
+   * 三列不再拉满窗口（第 87 轮）：底部三块模块高度固定（--ms-module-h），
+   * 列高改回「由内容决定」，窗口变高时下方只多出空白，不会把模块和表格行高一起拉大。
+   * 窗口矮到放不下时，整块工作区滚动（overflow: auto）。
+   */
+  grid-template-rows: auto;
   gap: 12px;
   padding: 12px;
   align-items: start;
@@ -137,6 +149,34 @@ body {
   flex-direction: column;
   gap: 12px;
   min-width: 0;
+  min-height: 0;
+}
+
+/*
+ * 每列最后一块面板 = 固定高度模块（第 87 轮）：
+ * 高度只由 `--ms-module-h` 决定，不再 `flex: 1` 吃掉列内剩余高度，
+ * 所以窗口变高/变矮都不会改变它的高度；内容超出时由内部表格/列表各自滚动。
+ */
+.col > .panel:last-child {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  height: var(--ms-module-h);
+  min-height: 0;
+}
+
+.col > .panel:last-child > .panel-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  /* 面板高度固定：多出来的内容不许把面板顶高，交给内部滚动区 */
+  overflow: hidden;
+}
+
+/* 内容根节点撑满内容区（应用值/候选/电机参数各有 min-height 计算，这里只兜底）。 */
+.col > .panel:last-child > .panel-body > * {
+  flex: 1 1 auto;
   min-height: 0;
 }
 
@@ -240,11 +280,29 @@ body {
   gap: 5px;
 }
 
+/*
+ * 用户输入面板高度固定（第 87 轮）：行距均分吃掉固定高度内的剩余空间，
+ * 所以行不会随窗口高度变化。行内是 grid + align-items:center，变高只是行距变宽。
+ * 下限 24px = 小号输入框高度：真的放不下时（旋转页多一行提示）让内容区滚动，不压字。
+ */
+.col-left .panel:last-child .pair-row,
+.col-left .panel:last-child .direction-row {
+  flex: 1 1 auto;
+  min-height: 24px;
+}
+
+/* 旋转页有提示文案、极端窗口下仍放不下时，用户输入面板内部滚动，而不是裁掉行 */
+.col-left > .panel:last-child > .panel-body {
+  overflow-y: auto;
+}
+
 .pair-head,
 .pair-row {
   display: grid;
-  grid-template-columns: 88px minmax(0, 1fr) 88px 38px;
-  gap: 6px;
+  /* 左面板固定 310px、正文约 271px。原 88+88+38 只给输入框剩 52px（内容 40px），
+     连 0.001 都被裁成 0.00；现为 80+66+38，输入列可拿到 72px（内容约 60px）。 */
+  grid-template-columns: 80px minmax(0, 1fr) 66px 38px;
+  gap: 5px;
   align-items: center;
 }
 
@@ -280,8 +338,8 @@ body {
 }
 
 .pair-number .el-input__wrapper {
-  padding-left: 6px;
-  padding-right: 6px;
+  padding-left: 4px;
+  padding-right: 4px;
 }
 
 .pair-result {
@@ -344,15 +402,6 @@ body {
 
 .pair-hint-inline {
   font-size: 12px;
-  color: var(--ms-text-dim);
-}
-
-.pair-footnote {
-  margin-top: 4px;
-  padding-top: 6px;
-  border-top: 1px dashed var(--ms-border-soft);
-  font-size: 12px;
-  line-height: 1.6;
   color: var(--ms-text-dim);
 }
 

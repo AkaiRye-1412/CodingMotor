@@ -76,6 +76,66 @@ class MotorCatalogTemplatesTest {
         }
     }
 
+    /**
+     * 2026-11-21（用户裁定）：三套模板的 {@code uBus} 必须出现在 M8「选入电机数据」参数表。
+     *
+     * <p>直线/力矩样册写「最高母线电压」、音圈写「最高电压」，是同一个耐压字段（{@code overUbus}
+     * 校核的输入）。只让音圈显示会让直线电机核对参数时看不到供电上限——展示口径必须一致。
+     */
+    @Test
+    void everyTemplateShowsBusVoltageInDetailTable() {
+        for (MotorType type : MotorType.values()) {
+            MotorField field = MotorCatalogTemplates.of(type).field("uBus").orElseThrow();
+            assertThat(field.showsInDetail())
+                    .as("%s 的最高母线电压必须出现在 M8 参数表", type)
+                    .isTrue();
+            assertThat(field.required())
+                    .as("%s 的最高母线电压仍是必填（耐压校核输入）", type)
+                    .isTrue();
+            assertThat(field.showsInForm()).as("%s 的录入表单仍要有该字段", type).isTrue();
+        }
+    }
+
+    /**
+     * 2026-11-21（用户裁定）：音圈 M8 参数表不再显示「铁芯质量」「运动间隙」。
+     *
+     * <p>口径靠模板 {@code display} 表达（{@code detail} = M8 参数表 / {@code form} = 录入表单），
+     * 不在展示层写字段黑名单。两个被隐藏的字段**仍留在录入表单与识别别名里**，
+     * 所以这里同时断言 {@code showsInForm()} 为真，避免后人误删字段导致样册识别丢项。
+     */
+    @Test
+    void coilDetailTableHidesCoreMassAndGap() {
+        MotorTypeTemplate coil = MotorCatalogTemplates.of(MotorType.COIL);
+
+        for (String key : List.of("coreMass", "gap")) {
+            MotorField field = coil.field(key).orElseThrow();
+            assertThat(field.showsInDetail()).as("%s 不应出现在 M8 参数表", key).isFalse();
+            assertThat(field.showsInForm()).as("%s 仍应在录入表单中", key).isTrue();
+        }
+    }
+
+    /** 2026-11-21（用户裁定）：直线 M8 参数表不显示「线圈长度」（结构尺寸，样册常缺）。 */
+    @Test
+    void linearDetailTableHidesCoilLength() {
+        MotorField field = MotorCatalogTemplates.of(MotorType.LINEAR).field("coilLength").orElseThrow();
+        assertThat(field.showsInDetail()).as("线圈长度不应出现在 M8 参数表").isFalse();
+        assertThat(field.showsInForm()).as("线圈长度仍应在录入表单中").isTrue();
+    }
+
+    /**
+     * 2026-11-21（用户裁定）：旋转（力矩）M8 参数表不显示「线圈质量」。
+     *
+     * <p>旋转电机的电机惯量取「转动惯量」（CAL-26），线圈质量只是样册信息；
+     * 字段本身仍是 ACR 弧形电机入库所必需（第 68 轮），所以只能退到 {@code formOnly}，不能删。
+     */
+    @Test
+    void torqueDetailTableHidesMoverMass() {
+        MotorField field = MotorCatalogTemplates.of(MotorType.TORQUE).field("moverMass").orElseThrow();
+        assertThat(field.showsInDetail()).as("线圈质量不应出现在 M8 参数表").isFalse();
+        assertThat(field.showsInForm()).as("线圈质量仍应在录入表单中").isTrue();
+        assertThat(field.aliases()).as("样册识别别名不能丢").isNotEmpty();
+    }
+
     @Test
     void boreIsOnlyAvailableForTorque() {
         assertThat(MotorCatalogTemplates.of(MotorType.TORQUE).bores()).containsExactly("标准", "特殊");

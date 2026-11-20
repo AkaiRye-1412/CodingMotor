@@ -180,13 +180,18 @@ public final class MotorCatalogTemplates {
                             formOnly("pn", "持续热功率 ({cool}) @100°C", "W").withAliases(A_PN).withSymbol("Pcn"),
                             formOnly("tMax", "最高线圈温度", "°C").withAliases(A_TMAX).withSymbol("Tmax"),
                             formOnlyRequired("kth", "热耗散常数 ({cool})", "W/°C").withAliases(A_KTH).withSymbol("Kth"),
-                            formOnlyRequired("uBus", "最高母线电压", "Vdc").withAliases(A_UBUS).withSymbol("Ubus"),
+                            // 2026-11-21（用户裁定）：三套模板的 uBus 一律进 M8 参数表。
+                            // 直线/力矩样册写作「最高母线电压」、音圈写作「最高电压」，是同一个耐压字段，
+                            // 展示口径必须一致——否则直线电机核对参数时看不到供电上限。
+                            bothRequired("uBus", "最高母线电压", "Vdc").withAliases(A_UBUS).withSymbol("Ubus"),
                             formOnly("polePitch", "电磁周期", "mm").withAliases(A_POLE_PITCH),
                             formOnly("magForce", "磁吸力", "N").withAliases(A_MAG_FORCE)
                     )),
                     new MotorFieldGroup(GROUP_MECHANICAL, false, List.of(
                             both("moverMass", "线圈质量 ({cool})", "kg").withAliases(A_MOVER_MASS),
-                            both("coilLength", "线圈长度 ({cool})", "mm").withAliases(A_COIL_LENGTH),
+                            // 2026-11-21（用户裁定）：线圈长度不进直线 M8 参数表——它是结构尺寸，
+                            // 不参与任何计算，样册上也常缺（表里长期是「—」）。仍保留在录入表单与识别别名里。
+                            formOnly("coilLength", "线圈长度 ({cool})", "mm").withAliases(A_COIL_LENGTH),
                             formOnly("trackMass", "磁轨质量 (每米)", "kg/m").withAliases(A_TRACK_MASS)
                     )),
                     new MotorFieldGroup(GROUP_ADOPTION, true, List.of(
@@ -218,7 +223,8 @@ public final class MotorCatalogTemplates {
                             formOnly("pn", "持续热功率 ({cool}) @100°C", "W").withAliases(A_PN).withSymbol("Pcn"),
                             formOnly("tMax", "最高线圈温度", "°C").withAliases(A_TMAX).withSymbol("Tmax"),
                             formOnlyRequired("kth", "热耗散常数 ({cool})", "W/°C").withAliases(A_KTH).withSymbol("Kth"),
-                            formOnlyRequired("uBus", "最高母线电压", "Vdc").withAliases(A_UBUS).withSymbol("Ubus"),
+                            // 2026-11-21：同直线模板，uBus 进 M8 参数表（口径统一）。
+                            bothRequired("uBus", "最高母线电压", "Vdc").withAliases(A_UBUS).withSymbol("Ubus"),
                             formOnly("poles", "极数", "-").withAliases(A_POLES).withSymbol("2p"),
                             // 第 66 轮：不再是必填。样册口径并不统一——AXD 系列写「最高转速 @ 持续扭矩（600V）」，
                             // AXM 系列只给一行「最高转速」，按必填处理会让整批力矩型号在入库预览里全部「跳过」。
@@ -230,7 +236,9 @@ public final class MotorCatalogTemplates {
                             formOnly("totalMass", "总质量", "kg").withAliases(A_TOTAL_MASS),
                             // 第 68 轮：ACR 弧形电机（圆弧型直线电机）的样册在机械参数分节里给「线圈质量」，
                             // 且它按力矩电机入库（参数是 Tcn/Tpk/Kt），所以力矩模板也要有这个字段。
-                            both("moverMass", "线圈质量 ({cool})", "kg").withAliases(A_MOVER_MASS),
+                            // 2026-11-21（用户裁定）：字段保留，但不进旋转 M8 参数表——旋转电机的电机惯量
+                            // 用「转动惯量 inertia」（CAL-26），线圈质量只是样册信息，会挤占参数表空间。
+                            formOnly("moverMass", "线圈质量 ({cool})", "kg").withAliases(A_MOVER_MASS),
                             both("inertia", "转动惯量", "kg·m²").withAliases(A_INERTIA),
                             formOnly("runoutAxial", "轴向端跳", "μm"),
                             formOnly("runoutRadial", "径向端跳", "μm"),
@@ -265,7 +273,10 @@ public final class MotorCatalogTemplates {
                             formOnly("pn", "持续热功率 @100°C", "W").withAliases(A_PN).withSymbol("Pcn"),
                             formOnly("tMax", "最高线圈温度", "°C").withAliases(A_TMAX).withSymbol("Tmax"),
                             formOnlyRequired("kth", "热耗散常数", "W/°C").withAliases(A_KTH).withSymbol("Kth"),
-                            formOnlyRequired("uBus", "最高电压", "Vdc").withAliases(A_UBUS).withSymbol("Ubus")
+                            // 2026-11-21（用户裁定）：M8「选入电机数据」要显示「最高电压」。
+                            // 它是耐压校核（overUbus）的输入，和持续/峰值电流一样属于必看的性能项，
+                            // 只放表单会让用户核对参数时看不到供电上限。
+                            bothRequired("uBus", "最高电压", "Vdc").withAliases(A_UBUS).withSymbol("Ubus")
                     )),
                     new MotorFieldGroup(GROUP_MECHANICAL, false, List.of(
                             // 2026-11-20（CAL-25）：音圈质量**单位与内部单位统一为 kg**，不再用 factor 把 g 换成 kg。
@@ -273,8 +284,11 @@ public final class MotorCatalogTemplates {
                             // 「值已换算成 0.0729、单位还写着 g」的双重错误。样册给 g 时由入库层
                             // （CatalogRowMapper.scaleOf）按行单位自动 ÷1000。
                             both("moverMass", "线圈质量", "kg").withAliases(A_MOVER_MASS),
-                            both("coreMass", "铁芯质量", "kg").withAliases(A_CORE_MASS),
-                            both("gap", "运动间隙", "mm").withAliases(A_GAP)
+                            // 2026-11-21（用户裁定）：铁芯质量 / 运动间隙不进 M8 参数表——
+                            // 它们只影响结构选型，不参与任何计算。仍保留在录入表单（formOnly）
+                            // 与样册识别别名里，入库口径不变。
+                            formOnly("coreMass", "铁芯质量", "kg").withAliases(A_CORE_MASS),
+                            formOnly("gap", "运动间隙", "mm").withAliases(A_GAP)
                     )),
                     new MotorFieldGroup(GROUP_ADOPTION, true, List.of(
                             formOnly("maxSpeedPeak", "最高速度 @峰值推力", "m/s").withAliases(A_MAX_SPEED_PEAK_L),

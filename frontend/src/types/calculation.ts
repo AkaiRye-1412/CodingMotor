@@ -7,8 +7,10 @@ export interface SmoothSetting {
 }
 
 export interface PlanInput {
-  /** 直线：总移动质量 kg；旋转：负载惯量 kg·m²。 */
+  /** 直线：总移动质量 kg；旋转：负载惯量 kg·m²（不含电机自身）。 */
   load: number
+  /** 选入电机的自身质量/惯量（CAL-26）：直线线圈质量 kg / 旋转转动惯量 kg·m²，缺省 0。 */
+  motorMass?: number
   distance: number
   time?: number | null
   dwell?: number

@@ -104,6 +104,58 @@ class CalculationApiTest {
         assertThat(data.path("sampling").path("force")).hasSize(241);
     }
 
+    /**
+     * CAL-26：选入电机的线圈质量并入总移动质量，理论推力按「负载 + 电机质量」计算。
+     *
+     * <p>基准用例负载 2 kg、峰值推力 9 N（a_peak = 4.5 m/s²）；再叠加 3 kg 后总质量 5 kg，
+     * 峰值推力应同比放大到 22.5 N —— 加速度曲线本身不随质量变化。
+     */
+    @Test
+    void motorMassIsAddedToTotalMovingMass() throws Exception {
+        JsonNode base = call(linearRequest(), 200).path("data");
+        assertThat(base.path("theoretical").path("peakForce").asDouble()).isCloseTo(9.0, within(1e-6));
+
+        Map<String, Object> withMass = linearRequest();
+        planOf(withMass).put("motorMass", 3.0);
+        JsonNode data = call(withMass, 200).path("data");
+
+        assertThat(data.path("theoretical").path("peakForce").asDouble())
+                .isCloseTo(base.path("theoretical").path("peakForce").asDouble() * 2.5, within(1e-6));
+        // 采样曲线上的力也必须含电机质量，不能只有理论值变了
+        assertThat(maxSampleForce(data))
+                .isCloseTo(maxSampleForce(base) * 2.5, within(1e-3));
+    }
+
+    @Test
+    void selectedMotorAppliesMotorMassToAppliedValues() throws Exception {
+        Long motorId = seedLinear("CALC-L1", 12, 48);
+
+        Map<String, Object> withoutMass = linearRequest();
+        withoutMass.put("selectedMotorId", motorId);
+        double basePeakCurrent = call(withoutMass, 200).path("data")
+                .path("selectedMotor").path("applied").path("peakCurrent").asDouble();
+
+        Map<String, Object> withMass = linearRequest();
+        withMass.put("selectedMotorId", motorId);
+        planOf(withMass).put("motorMass", 2.0);
+        double massPeakCurrent = call(withMass, 200).path("data")
+                .path("selectedMotor").path("applied").path("peakCurrent").asDouble();
+
+        // 总质量翻倍 → 峰值电流同步翻倍（kf 不变）
+        assertThat(massPeakCurrent).isCloseTo(basePeakCurrent * 2.0, within(1e-6));
+    }
+
+    @Test
+    void negativeMotorMassIsRejected() throws Exception {
+        Map<String, Object> body = linearRequest();
+        planOf(body).put("motorMass", -1.0);
+
+        JsonNode error = call(body, 400);
+
+        assertThat(error.path("code").asText()).isEqualTo("COMMON_VALIDATION_FAILED");
+        assertThat(errorFields(error)).contains("plan.motorMass");
+    }
+
     @Test
     void selectedMotorReturnsParametersAndAppliedValues() throws Exception {
         Long motorId = seedLinear("CALC-L1", 12, 48);
@@ -120,10 +172,12 @@ class CalculationApiTest {
         JsonNode parameters = selected.path("parameters");
         // 2026-11-20：直线模板有 11 个「识别」字段进参数表（9 项性能参数 + 线圈质量/长度），
         // 派生的「额定功率 / 最大功率」不再出现——样册上识别不到的东西不展示。
+        // 2026-11-21：uBus（最高母线电压）进参数表、线圈长度移出 → 仍是 11 项。
         assertThat(parameters).hasSize(11);
         List<String> keys = new ArrayList<>();
         parameters.forEach(parameter -> keys.add(parameter.path("key").asText()));
         assertThat(keys).doesNotContain("prated", "pmax");
+        assertThat(keys).contains("uBus").doesNotContain("coilLength");
         JsonNode km = findByKey(parameters, "km");
         assertThat(km.path("derived").asBoolean()).isTrue();
         assertThat(km.path("value").asDouble()).isGreaterThan(0);
@@ -555,5 +609,20 @@ class CalculationApiTest {
             }
         }
         throw new AssertionError("参数行不存在: " + key);
+    }
+
+    /** 取请求体里的 plan 子对象（baseRequest 每次新建，改它不影响其他用例）。 */
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> planOf(Map<String, Object> body) {
+        return (Map<String, Object>) body.get("plan");
+    }
+
+    /** 采样曲线上的最大力（绝对值），用于验证电机质量也进了采样。 */
+    private static double maxSampleForce(JsonNode data) {
+        double max = 0;
+        for (JsonNode point : data.path("sampling").path("force")) {
+            max = Math.max(max, Math.abs(point.path("f").asDouble()));
+        }
+        return max;
     }
 }

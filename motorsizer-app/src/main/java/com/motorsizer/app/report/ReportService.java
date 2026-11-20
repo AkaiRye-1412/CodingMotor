@@ -334,6 +334,9 @@ public class ReportService {
     /**
      * 工况输入：左列用户输入、右列实际参与计算的值（与 M4 双列表一一对应）。
      * 点到点模式下最大速度 / 最大加速度由系统反解，用户输入列显示「—」。
+     *
+     * <p>CAL-26：总移动质量 / 负载惯量的右列是「用户负载 + 电机自身质量/惯量」，
+     * 因此紧跟一行单独列出电机那一项，与界面双列完全对应。
      */
     private static List<ReportModel.ReportPairRow> inputRows(
             AxisKind axis,
@@ -342,10 +345,17 @@ public class ReportService {
             CalculationResponse.Curve curve,
             boolean computed) {
         boolean linear = axis == AxisKind.LINEAR;
+        Double load = plan == null ? null : plan.load();
+        Double motorMass = plan == null || plan.motorMass() == null ? null : plan.motorMass();
+        Double totalLoad = load == null ? null : load + (motorMass == null ? 0 : motorMass);
         List<ReportModel.ReportPairRow> rows = new ArrayList<>();
         rows.add(pair(linear ? "总移动质量" : "负载惯量",
-                fmt(plan == null ? null : plan.load(), 4),
-                computed ? fmt(plan == null ? null : plan.load(), 4) : "—",
+                fmt(load, 4),
+                computed ? fmt(totalLoad, 4) : "—",
+                linear ? "kg" : "kg·m²"));
+        rows.add(pair(linear ? "线圈质量" : "电机惯量",
+                fmt(motorMass, 4),
+                computed ? fmt(motorMass, 4) : "—",
                 linear ? "kg" : "kg·m²"));
         rows.add(pair(linear ? "运动距离" : "旋转角度",
                 fmt(plan == null ? null : plan.distance(), 4),

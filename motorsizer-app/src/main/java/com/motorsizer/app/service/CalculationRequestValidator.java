@@ -63,6 +63,7 @@ final class CalculationRequestValidator {
 
         CalculationRequest.Plan plan = request.plan();
         double load = 0;
+        double motorMass = 0;
         double distance = 0;
         Double time = null;
         double dwell = DEFAULT_DWELL;
@@ -80,6 +81,15 @@ final class CalculationRequestValidator {
                 errors.add(new FieldError("plan.load", "负载必须为非负数"));
             } else {
                 load = plan.load();
+            }
+
+            // 电机自身质量/惯量（CAL-26）：选填，缺省 0 —— 不选电机时口径与第 45 轮一致。
+            if (plan.motorMass() != null) {
+                if (!isFinite(plan.motorMass()) || plan.motorMass() < 0) {
+                    errors.add(new FieldError("plan.motorMass", "电机自身质量/惯量必须为非负数"));
+                } else {
+                    motorMass = plan.motorMass();
+                }
             }
 
             if (!isFinite(plan.distance()) || plan.distance() <= 0) {
@@ -215,6 +225,7 @@ final class CalculationRequestValidator {
                 smoothEnabled,
                 tauMs,
                 load,
+                motorMass,
                 distance,
                 time,
                 dwell,

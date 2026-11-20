@@ -66,7 +66,7 @@ public class CalculationService {
         CalculationMotor selectedMotor = resolveSelected(input);
         TheoreticalResult theoretical = ForceCalculator.theoretical(
                 input.axis(),
-                input.load(),
+                input.totalLoad(),
                 curve,
                 input.resistance(),
                 input.dwell(),
@@ -206,7 +206,7 @@ public class CalculationService {
                 theoretical,
                 curve,
                 new AppliedEnvironment(
-                        input.load(),
+                        input.totalLoad(),
                         input.resistance(),
                         input.dwell(),
                         input.ambientTemp(),
@@ -382,11 +382,12 @@ public class CalculationService {
     }
 
     private com.motorsizer.domain.sampling.ForceFunction forceFunction(CalculationInput input) {
-        return (acceleration, velocity) -> input.load()
+        double totalLoad = input.totalLoad();
+        return (acceleration, velocity) -> totalLoad
                 * acceleration
                 * UnitConversions.accelerationFactor(input.axis())
                 + input.resistance()
-                + ForceCalculator.gravityTerm(input.axis(), input.load(), input.tiltDeg());
+                + ForceCalculator.gravityTerm(input.axis(), totalLoad, input.tiltDeg());
     }
 
     private record EvaluatedMotor(CalculationMotor motor, MotorEvaluation evaluation) {

@@ -49,6 +49,8 @@ export function useAutoCalculation() {
       smooth: { enabled: setting.smoothEnabled, tauMs: setting.smoothTauMs },
       plan: {
         load: plan.load as number,
+        // 选入电机的线圈质量 / 转动惯量（CAL-26）：服务端按「负载 + 电机自身」算推力。
+        motorMass: motorStore.selectedMotorMass,
         distance: plan.distance as number,
         time: positiveOrNull(plan.time),
         dwell: plan.dwell ?? 0,

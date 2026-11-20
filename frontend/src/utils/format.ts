@@ -11,6 +11,24 @@ export function formatNumber(value: number | null | undefined, digits = 4): stri
   return text.includes('.') ? text.replace(/0+$/, '').replace(/\.$/, '') : text
 }
 
+/**
+ * M4 双列表用的窄列格式：默认 3 位小数，去掉尾零，不出现科学计数法。
+ *
+ * <p>与 {@link formatNumber} 的差别只有两点：位数更少（左栏只有约 60px），
+ * 以及小到会被 3 位小数抹平的值（`0.0005`）自动多留几位，不写成 `5.00e-4`。
+ */
+export function formatShort(value: number | null | undefined, digits = 3): string {
+  if (value == null || !Number.isFinite(value)) {
+    return '—'
+  }
+  let decimals = digits
+  while (decimals < 12 && Number(value.toFixed(decimals)) === 0 && value !== 0) {
+    decimals += 1
+  }
+  const text = value.toFixed(decimals)
+  return text.includes('.') ? text.replace(/0+$/, '').replace(/\.$/, '') : text
+}
+
 export function formatPercent(value: number | null | undefined, digits = 0): string {
   if (value == null || !Number.isFinite(value)) {
     return '—'

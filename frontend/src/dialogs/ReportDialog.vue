@@ -51,6 +51,8 @@ function buildRequest(): ReportRequest {
       selectedMotorId: motorStore.selectedMotorId,
       plan: {
         load: plan.load ?? 0,
+        // 与界面同一口径：报告的「总移动质量/负载惯量」= 负载 + 电机自身质量/惯量（CAL-26）
+        motorMass: motorStore.selectedMotorMass,
         distance: plan.distance ?? 0,
         time: positiveOrNull(plan.time),
         dwell: plan.dwell ?? 0,

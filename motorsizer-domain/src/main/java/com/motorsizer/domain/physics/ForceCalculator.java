@@ -27,9 +27,21 @@ public final class ForceCalculator {
     }
 
     /**
-     * 理论力/力矩（仅含负载）。
+     * 参与计算的总负载（2026-11-20 CAL-26）。
      *
-     * <p>直线：F = m·a + F_res + m·g·sinθ；旋转：T = J·α + T_res（无重力项）。
+     * <p>直线：总移动质量 = 用户负载 + 所选电机线圈质量（kg）；
+     * 旋转：总惯量 = 用户负载惯量 + 所选电机转动惯量（kg·m²）。
+     * 未选电机（或该电机未录入该项）时电机项为 0，与第 45 轮「不叠加电机自身质量」完全一致。
+     */
+    public static double totalLoad(double load, double motorMass) {
+        return load + motorMass;
+    }
+
+    /**
+     * 理论力/力矩。
+     *
+     * <p>{@code load} 为**总负载**（已由 {@link #totalLoad(double, double)} 叠加电机自身质量/惯量）。
+     * 直线：F = m·a + F_res + m·g·sinθ；旋转：T = J·α + T_res（无重力项）。
      */
     public static TheoreticalResult theoretical(
             AxisKind kind,

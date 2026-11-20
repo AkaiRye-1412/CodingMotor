@@ -18,7 +18,8 @@ import java.util.List;
 /**
  * K1 实际应用值：电流、热校核、母线电压、余量与供电结论。
  *
- * <p>逐行等价于原型 {@code calc.js:appliedValue}（第 45 轮口径：不叠加电机自身质量/惯量）。
+ * <p>逐行等价于原型 {@code calc.js:appliedValue}；{@code env.load()} 传的是**总负载**
+ * （用户负载 + 选中电机自身质量/惯量，CAL-26；第 45 轮曾为纯负载）。
  */
 public final class AppliedCalculator {
 
