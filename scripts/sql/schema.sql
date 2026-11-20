@@ -152,6 +152,7 @@ CREATE TABLE IF NOT EXISTS motor_torque_spec (
 
     -- ===== 机械参数 / 选填 =====
     total_mass          DECIMAL(18,6)            COMMENT '总质量 (kg)',
+    mover_mass          DECIMAL(18,6)            COMMENT '线圈质量 (kg)；ACR 弧形电机等样册提供（第 68 轮）',
     inertia             DECIMAL(18,6)            COMMENT '转动惯量 (kg·m²)；仅作参数展示，不参与计算（第 45 轮）',
     runout_axial        DECIMAL(18,6)            COMMENT '轴向端跳 (μm)',
     runout_radial       DECIMAL(18,6)            COMMENT '径向端跳 (μm)',
@@ -230,6 +231,11 @@ ALTER TABLE motor_torque_spec ALTER COLUMN max_speed_cont SET NULL;
 ALTER TABLE motor_linear_spec ALTER COLUMN t_max SET NULL;
 ALTER TABLE motor_torque_spec ALTER COLUMN t_max SET NULL;
 ALTER TABLE motor_coil_spec ALTER COLUMN t_max SET NULL;
+
+-- 第 68 轮：力矩电机增加「线圈质量」（ACR 弧形电机 / 圆弧型直线电机的样册给这一项）。
+-- CREATE TABLE IF NOT EXISTS 不会改动已建好的表，故对存量库补一条 ADD COLUMN；
+-- H2 的 IF NOT EXISTS 让这条可安全重复执行。列为可空，存量数据不受影响。
+ALTER TABLE motor_torque_spec ADD COLUMN IF NOT EXISTS mover_mass DECIMAL(18,6);
 
 
 -- ============================================================================

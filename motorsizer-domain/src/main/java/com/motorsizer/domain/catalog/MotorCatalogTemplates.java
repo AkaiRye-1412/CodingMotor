@@ -232,6 +232,9 @@ public final class MotorCatalogTemplates {
                     )),
                     new MotorFieldGroup(GROUP_MECHANICAL, false, List.of(
                             formOnly("totalMass", "总质量", "kg").withAliases(A_TOTAL_MASS),
+                            // 第 68 轮：ACR 弧形电机（圆弧型直线电机）的样册在机械参数分节里给「线圈质量」，
+                            // 且它按力矩电机入库（参数是 Tcn/Tpk/Kt），所以力矩模板也要有这个字段。
+                            both("moverMass", "线圈质量 ({cool})", "kg").withAliases(A_MOVER_MASS),
                             both("inertia", "转动惯量", "kg·m²").withAliases(A_INERTIA),
                             formOnly("runoutAxial", "轴向端跳", "μm"),
                             formOnly("runoutRadial", "径向端跳", "μm"),

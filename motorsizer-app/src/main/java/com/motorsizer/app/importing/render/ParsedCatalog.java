@@ -19,12 +19,14 @@ import java.util.Set;
  * @param ocrPages     通过 OCR 才解析出参数表的页（数据来自图像识别，需重点核对）
  * @param sectionRows  分节名 → 数据行数（含被过滤掉的分节，保序）
  * @param excludedParams 采集口径下被剔除的参数 → 行数（如「最高线圈温度」，保序）
+ * @param keptExtraParams 采集口径下额外捞取的参数 → 行数（机械参数里的质量/转动惯量，保序）
  */
 public record ParsedCatalog(String source, int pageCount, int charCount, boolean hasTextLayer,
                             List<CatalogTable> tables, Map<Integer, String> footnotes,
                             List<Integer> skippedPages, List<Integer> imageTablePages,
                             List<Integer> ocrPages, Map<String, Integer> sectionRows,
-                            Map<String, Integer> excludedParams) {
+                            Map<String, Integer> excludedParams,
+                            Map<String, Integer> keptExtraParams) {
 
     /** 型号数（去重保序）。 */
     public int modelCount() {
@@ -60,6 +62,24 @@ public record ParsedCatalog(String source, int pageCount, int charCount, boolean
             if (!e.getKey().isEmpty() && !LayoutRules.KEEP_SECTIONS.contains(e.getKey())) {
                 n += e.getValue();
             }
+        }
+        // 机械参数里捞取的质量/转动惯量行，本会被上面的循环计入「丢弃」，但它们实际被保留采集了
+        return n - keptExtraRows();
+    }
+
+    /**
+     * 从「机械参数」分节里额外捞取的数据行数（质量 / 转动惯量）。
+     *
+     * <p>这些行本会被 {@link #droppedRows()} 计入「丢弃」，但实际上被捞出来采集了。
+     * 报告里「丢弃行数」应扣掉这一部分，避免与「参数行数」对不上账。
+     */
+    public int keptExtraRows() {
+        if (keptExtraParams == null) {
+            return 0;
+        }
+        int n = 0;
+        for (int v : keptExtraParams.values()) {
+            n += v;
         }
         return n;
     }

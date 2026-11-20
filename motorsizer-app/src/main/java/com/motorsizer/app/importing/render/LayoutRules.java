@@ -158,6 +158,46 @@ public final class LayoutRules {
         return false;
     }
 
+    /**
+     * 采集口径下、机械参数分节里<b>额外保留</b>的参数名关键词（2026-11-20 用户裁定）。
+     *
+     * <p>背景：{@link #KEEP_SECTIONS} 只保留「性能参数」分节，而「质量」「转动惯量」都在
+     * 「机械参数」分节里，整段被丢弃。用户要求直线/音圈电机采集「线圈（动子）质量」、
+     * 力矩电机采集「转动惯量」——这两项从机械参数分节里单独捞出来，其余机械参数仍丢弃。
+     *
+     * <p>关键词必须写<b>完整词</b>，不能用宽泛的「质量」/「mass」：否则「总质量」「铁芯质量」
+     * 「磁轨质量」（{@code total/core/track mass}）也会被误捞进来，而用户只要线圈/动子质量。
+     * 与 {@link #EXCLUDED_PARAM_WORDS} 一样，按「只留字母数字/汉字、转小写」后包含匹配。
+     */
+    public static final Set<String> KEEP_EXTRA_PARAM_WORDS = Set.of(
+            // 质量（moverMass）：直线 / 音圈共用的「线圈质量 / 动子质量」
+            "线圈质量", "动子质量", "movermass", "movingmass", "forcermass",
+            // 转动惯量（inertia）：力矩
+            "转动惯量", "转子惯量", "momentofinertia", "inertia");
+
+    /** 报告与提示语里的人话描述（与上面的名单同源，改名单时同步改这一句）。 */
+    public static final String KEEP_EXTRA_PARAM_DESC = "线圈/动子质量、转动惯量（来自机械参数分节）";
+
+    /**
+     * 该参数行是否属于「机械参数分节里要额外采集」的项（质量 / 转动惯量）。
+     *
+     * <p>只按名字关键词判断（不做符号匹配）：模板里 {@code moverMass} / {@code inertia} 都没有
+     * symbol，字段匹配本就靠名字别名；机械参数的符号（如转动惯量的 {@code J}）单字母太短，
+     * 引入符号名单会误伤端跳/载荷等其他单字母符号。
+     */
+    public static boolean isKeptExtraParameter(String name, String symbol) {
+        String key = keyword(name);
+        if (key.isEmpty()) {
+            return false;
+        }
+        for (String word : KEEP_EXTRA_PARAM_WORDS) {
+            if (key.contains(word)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /** 比较用的归一形态：只留字母、数字与汉字，转小写（去掉空格、点、括号、上下标等）。 */
     static String keyword(String text) {
         if (text == null) {

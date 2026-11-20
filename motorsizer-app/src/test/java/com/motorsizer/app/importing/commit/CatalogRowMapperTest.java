@@ -262,6 +262,46 @@ class CatalogRowMapperTest {
                 .containsExactly("水冷", "气冷", "普通");
     }
 
+    /**
+     * ACR 弧形电机：样册归在「直线电机」章节、参数表里也带「磁吸力 / 电磁周期 / 线圈质量」
+     * 这些直线电机才有的行，但参数全是转矩（{@code Tcn 19.8 Nm}）。
+     *
+     * <p>按「命中字段数最多」判定时，直线模板与力矩模板各命中 13 项打平、取靠前的 LINEAR 胜出，
+     * 于是入库去找「持续推力 / 峰值推力」，ACR240/335/820/1240/1525 全系列被判「缺少必填参数」
+     * 整批跳过（2026-11-20 用户截图）。转矩类参数是旋转电机的决定性证据，必须先判 TORQUE。
+     */
+    @Test
+    void detectsArcMotorAsTorqueDespiteLinearOnlyRows() {
+        List<CatalogSummarySheet.SheetRow> rows = List.of(
+                row("ACR240-S5-S", "性能参数", "持续转矩(自冷) @100°C", "Tcn", "Nm", "19.8"),
+                row("ACR240-S5-S", "性能参数", "峰值转矩", "Tpk", "Nm", "72.8"),
+                row("ACR240-S5-S", "性能参数", "转矩常数 ±10%", "Kt", "Nm/Arms", "19.77"),
+                row("ACR240-S5-S", "性能参数", "反电势常数 ±10%", "Ke", "Vpeak/rpm", "1.69"),
+                row("ACR240-S5-S", "性能参数", "电机常数@25°C", "Km", "Nm/Sqrt(W)", "2.8"),
+                row("ACR240-S5-S", "性能参数", "相间电阻@25°C ±10%", "R25", "Ω", "35.2"),
+                row("ACR240-S5-S", "性能参数", "相间电感 ±30%", "L", "mH", "19.5"),
+                row("ACR240-S5-S", "性能参数", "电气时间常数", "τe", "ms", "0.6"),
+                row("ACR240-S5-S", "性能参数", "持续电流(自冷) @100°C", "Icn", "Arms", "1.0"),
+                row("ACR240-S5-S", "性能参数", "峰值电流", "Ipk", "Arms", "3.7"),
+                row("ACR240-S5-S", "性能参数", "持续热功率(自冷) @100°C", "Pcn", "W", "68.0"),
+                row("ACR240-S5-S", "性能参数", "热耗散常数(自冷)", "Kthn", "W/°C", "0.9"),
+                row("ACR240-S5-S", "性能参数", "最高母线电压", "Ubus", "Vdc", "600"),
+                // 下面三行是直线电机独有项，正是它们此前把 ACR 拉到了直线模板
+                row("ACR240-S5-S", "性能参数", "电磁周期", "τNN", "degree", "7.2"),
+                row("ACR240-S5-S", "性能参数", "磁吸力", "Fa", "kN", "0"),
+                row("ACR240-S5-S", "性能参数", "线圈质量 (自冷)", "mcn", "kg", "1.1"));
+
+        CatalogRowMapper.MappedMotor motor = mapper.map(rows).get(0);
+
+        assertThat(motor.type()).isEqualTo(MotorType.TORQUE);
+        // 判对类型后必填项齐全，不再「跳过」
+        assertThat(motor.missing()).isEmpty();
+        assertThat(motor.spec()).containsEntry("torqueCont", new BigDecimal("19.8"))
+                .containsEntry("kt", new BigDecimal("19.77"))
+                // 第 68 轮：力矩模板也有「线圈质量」，ACR 的 1.1 kg 不再进「未映射的参数」
+                .containsEntry("moverMass", new BigDecimal("1.1"));
+    }
+
     private static CatalogSummarySheet.SheetRow row(String model, String section, String name,
                                                     String symbol, String unit, String value) {
         return new CatalogSummarySheet.SheetRow(model, section, name, symbol, unit, value);

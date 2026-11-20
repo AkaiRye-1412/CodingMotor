@@ -90,6 +90,8 @@ public class CatalogParser {
             Map<String, Integer> sectionRows = new LinkedHashMap<>();
             // 采集口径下被剔除的参数 → 行数（如「最高线圈温度」），同样进识别报告
             Map<String, Integer> excludedParams = new LinkedHashMap<>();
+            // 采集口径下额外捞取的参数（机械参数里的质量/转动惯量）→ 行数，进识别报告
+            Map<String, Integer> keptExtra = new LinkedHashMap<>();
             // 图片占比达标的页：留给「整本一张表都没有」时的兜底 OCR
             List<Integer> candidates = new ArrayList<>();
             int chars = 0;
@@ -102,7 +104,7 @@ public class CatalogParser {
                 boolean ocrPage = false;
 
                 int got = parseTablesInPage(pno, scan.runs(), scan.bands(), false,
-                        tables, notes, sectionRows, excludedParams);
+                        tables, notes, sectionRows, excludedParams, keptExtra);
                 // 文字层里没有表，但这页看着就是「参数表被贴成了图片」：渲染成图跑一次 OCR，
                 // 把识别结果当成普通文字行重跑同一套版面逻辑（列边界、分节、脚注都不变）。
                 if (got == 0 && ocrPagesUsed < LayoutRules.OCR_MAX_PAGES && isImageSpecPage(scan)) {
@@ -110,7 +112,7 @@ public class CatalogParser {
                     if (!ocr.isEmpty()) {
                         ocrPagesUsed++;
                         int fromOcr = parseTablesInPage(pno, ocr, scan.bands(), true,
-                                tables, notes, sectionRows, excludedParams);
+                                tables, notes, sectionRows, excludedParams, keptExtra);
                         if (fromOcr > 0) {
                             got = fromOcr;
                             ocrPage = true;
@@ -144,7 +146,7 @@ public class CatalogParser {
                     ocrPagesUsed++;
                     List<FillBand> bands = scanner.scan(doc, pno).bands();
                     if (parseTablesInPage(pno, ocr, bands, true,
-                            tables, notes, sectionRows, excludedParams) > 0) {
+                            tables, notes, sectionRows, excludedParams, keptExtra) > 0) {
                         ocrPages.add(pno);
                         skipped.remove(Integer.valueOf(pno));
                         imageTablePages.remove(Integer.valueOf(pno));
@@ -155,7 +157,8 @@ public class CatalogParser {
             // 有文字层的判据：整本字符量够多，或至少解析出了参数表（单页短样册字符数可能很少）
             boolean hasText = chars > 500 || !tables.isEmpty();
             return new ParsedCatalog(pdf.toString(), pageCount, chars, hasText,
-                    tables, notes, skipped, imageTablePages, ocrPages, sectionRows, excludedParams);
+                    tables, notes, skipped, imageTablePages, ocrPages, sectionRows, excludedParams,
+                    keptExtra);
         }
     }
 
@@ -168,7 +171,8 @@ public class CatalogParser {
     private int parseTablesInPage(int pno, List<TextRun> runs, List<FillBand> bands, boolean ocrMode,
                                   List<CatalogTable> tables, Map<Integer, String> notes,
                                   Map<String, Integer> sectionRows,
-                                  Map<String, Integer> excludedParams) {
+                                  Map<String, Integer> excludedParams,
+                                  Map<String, Integer> keptExtra) {
         List<TextLine> probe = groupLines(withinX(runs, Double.MAX_VALUE));
         List<Integer> hs = headersIn(probe);
         if (hs.isEmpty()) {
@@ -212,7 +216,7 @@ public class CatalogParser {
             rows = mergeCells(rows);
             // 分节过滤放在所有行合并之后：这样报告里的「分节明细/丢弃行数」与
             // 「参数行数」口径一致（都是合并后的行数），不会出现两边加起来对不上的情况。
-            rows = keepWantedSections(rows, sectionRows);
+            rows = keepWantedSections(rows, sectionRows, keptExtra);
             // 再按采集口径剔除个别参数（如最高线圈温度）：用户只需要选型用得上的项
             rows = dropExcludedParameters(rows, excludedParams);
             if (rows.stream().allMatch(r -> r.values.isEmpty())) {
@@ -1357,13 +1361,18 @@ public class CatalogParser {
     }
 
     /**
-     * 只保留 {@link LayoutRules#KEEP_SECTIONS} 里的分节（2026-11-19 用户裁定：只抓性能参数）。
+     * 只保留 {@link LayoutRules#KEEP_SECTIONS} 里的分节（2026-11-19 用户裁定：只抓性能参数），
+     * 但机械参数分节里的「质量 / 转动惯量」额外捞出（2026-11-20 用户裁定，见
+     * {@link LayoutRules#isKeptExtraParameter}）。
      *
      * <p>数据行自身不带分节信息，分节靠 {@code KIND_SECTION} 行按顺序表达，因此这里顺序扫描、
      * 维护「当前分节是否保留」；第一个分节之前的部分（型号行、表头区）默认保留。
-     * 所有分节的数据行数一并记进 {@code sectionCounts}，供「识别报告」说明被丢掉了哪些。
+     * 所有分节的数据行数一并记进 {@code sectionCounts}（原始行数，含被丢弃分节），供「识别报告」
+     * 说明被丢掉了哪些；额外捞取的质量/惯量行数单独记进 {@code keptExtra}（分节名 → 行数），
+     * 与「丢弃行数」分开对账。
      */
-    List<TableRow> keepWantedSections(List<TableRow> rows, Map<String, Integer> sectionCounts) {
+    List<TableRow> keepWantedSections(List<TableRow> rows, Map<String, Integer> sectionCounts,
+                                      Map<String, Integer> keptExtra) {
         List<TableRow> out = new ArrayList<>();
         String current = "";
         boolean keep = true;
@@ -1379,6 +1388,12 @@ public class CatalogParser {
             sectionCounts.merge(current, 1, Integer::sum);
             if (keep) {
                 out.add(r);
+            } else if (LayoutRules.isKeptExtraParameter(r.name, r.sym)) {
+                // 非保留分节（机械参数）里，质量/转动惯量要捞出来采集；其余照常丢弃
+                out.add(r);
+                if (keptExtra != null) {
+                    keptExtra.merge(current, 1, Integer::sum);
+                }
             }
         }
         return out;

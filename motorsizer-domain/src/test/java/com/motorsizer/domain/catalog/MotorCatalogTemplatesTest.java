@@ -29,7 +29,8 @@ class MotorCatalogTemplatesTest {
     void fieldCountsMatchDatabaseColumns() {
         // 规格表列数减去 id/motor_id/created_at/updated_at
         assertThat(MotorCatalogTemplates.of(MotorType.LINEAR).fields()).hasSize(21);
-        assertThat(MotorCatalogTemplates.of(MotorType.TORQUE).fields()).hasSize(25);
+        // 第 68 轮：力矩模板加「线圈质量」(moverMass)，25 → 26（schema 同步加 mover_mass 列）
+        assertThat(MotorCatalogTemplates.of(MotorType.TORQUE).fields()).hasSize(26);
         assertThat(MotorCatalogTemplates.of(MotorType.COIL).fields()).hasSize(20);
     }
 

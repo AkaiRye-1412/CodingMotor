@@ -145,7 +145,8 @@ class CatalogWorkbookWriterTest {
     private static ParsedCatalog catalog(String model, List<String> labels, List<TableRow> rows) {
         CatalogTable table = new CatalogTable(2, model, labels, labels, rows);
         return new ParsedCatalog("sample.pdf", 3, 2000, true,
-                List.of(table), Map.of(), List.of(), List.of(), List.of(2), Map.of(), Map.of());
+                List.of(table), Map.of(), List.of(), List.of(), List.of(2), Map.of(), Map.of(),
+                Map.of());
     }
 
     /** 「参数汇总」里某类参数：型号 → 值。 */

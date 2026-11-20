@@ -72,6 +72,7 @@ public final class MotorSpecConverter {
         e.setPn(v(spec, "pn"));
         e.setPoles(v(spec, "poles"));
         e.setTotalMass(v(spec, "totalMass"));
+        e.setMoverMass(v(spec, "moverMass"));
         e.setInertia(v(spec, "inertia"));
         e.setRunoutAxial(v(spec, "runoutAxial"));
         e.setRunoutRadial(v(spec, "runoutRadial"));
@@ -157,6 +158,7 @@ public final class MotorSpecConverter {
             put(spec, "maxSpeedPeak", e.getMaxSpeedPeak());
             put(spec, "maxSpeedCont", e.getMaxSpeedCont());
             put(spec, "totalMass", e.getTotalMass());
+            put(spec, "moverMass", e.getMoverMass());
             put(spec, "inertia", e.getInertia());
             put(spec, "runoutAxial", e.getRunoutAxial());
             put(spec, "runoutRadial", e.getRunoutRadial());

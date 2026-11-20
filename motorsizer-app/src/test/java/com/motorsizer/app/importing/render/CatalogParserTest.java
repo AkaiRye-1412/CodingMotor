@@ -299,12 +299,13 @@ class CatalogParserTest {
         CatalogParser parser = new CatalogParser(new PdfPageScanner());
         List<TableRow> rows = List.of(
                 section("性能参数"), dataRow("持续转矩"), dataRow("峰值转矩"),
-                section("机械参数"), dataRow("转子惯量"),
+                section("机械参数"), dataRow("轴向端跳"),
                 section("其他信息"), dataRow("绝缘等级"),
                 section("编码器参数"), dataRow("编码器分辨率"));
 
         Map<String, Integer> counts = new LinkedHashMap<>();
-        List<TableRow> kept = parser.keepWantedSections(rows, counts);
+        Map<String, Integer> keptExtra = new LinkedHashMap<>();
+        List<TableRow> kept = parser.keepWantedSections(rows, counts, keptExtra);
 
         assertThat(kept).extracting(TableRow::name)
                 .containsExactly("性能参数", "持续转矩", "峰值转矩");
@@ -313,6 +314,51 @@ class CatalogParserTest {
                 .containsEntry("机械参数", 1)
                 .containsEntry("其他信息", 1)
                 .containsEntry("编码器参数", 1);
+        // 「轴向端跳」不命中质量/转动惯量关键词，机械参数整节照常丢弃，无额外捞取
+        assertThat(keptExtra).isEmpty();
+    }
+
+    /**
+     * 采集口径（2026-11-20 用户裁定）：机械参数分节整节丢弃，但其中的「质量 / 转动惯量」
+     * 要捞出来采集。
+     *
+     * <p>直线/音圈的「线圈质量 / 动子质量 / Mover mass」、力矩的「转动惯量 / Moment of inertia」
+     * 都要保留；「轴向端跳」「最大载荷」「总质量」等照常丢弃，不能误伤。
+     */
+    @Test
+    void keepsMassAndInertiaFromMechanicalSection() {
+        CatalogParser parser = new CatalogParser(new PdfPageScanner());
+        List<TableRow> rows = List.of(
+                section("性能参数"), dataRow("持续推力"),
+                section("机械参数"),
+                param("线圈质量", "", "kg", "0.8"),
+                param("动子质量", "", "kg", "1.2"),
+                param("Mover mass", "", "kg", "0.8"),
+                param("转动惯量", "J", "kg·m²", "0.045"),
+                param("Moment of inertia", "", "kg·m²", "0.045"),
+                param("轴向端跳", "", "μm", "5"),
+                param("总质量", "", "kg", "3.0"),
+                param("最大轴向载荷", "", "N", "50"));
+
+        Map<String, Integer> counts = new LinkedHashMap<>();
+        Map<String, Integer> keptExtra = new LinkedHashMap<>();
+        List<TableRow> kept = parser.keepWantedSections(rows, counts, keptExtra);
+
+        assertThat(kept).extracting(TableRow::name)
+                .containsExactly("性能参数", "持续推力",
+                        "线圈质量", "动子质量", "Mover mass", "转动惯量", "Moment of inertia");
+        // 轴向端跳 / 总质量 / 最大轴向载荷 不命中，照常丢弃
+        assertThat(counts).containsEntry("机械参数", 8);
+        assertThat(keptExtra).containsEntry("机械参数", 5);
+        // 判定方法单测：命中与不命中的边界
+        assertThat(LayoutRules.isKeptExtraParameter("线圈质量", "")).isTrue();
+        assertThat(LayoutRules.isKeptExtraParameter("Mover mass", "")).isTrue();
+        assertThat(LayoutRules.isKeptExtraParameter("转动惯量", "J")).isTrue();
+        assertThat(LayoutRules.isKeptExtraParameter("Moment of inertia", "")).isTrue();
+        assertThat(LayoutRules.isKeptExtraParameter("总质量", "")).isFalse();
+        assertThat(LayoutRules.isKeptExtraParameter("磁轨质量", "")).isFalse();
+        assertThat(LayoutRules.isKeptExtraParameter("铁芯质量", "")).isFalse();
+        assertThat(LayoutRules.isKeptExtraParameter("轴向端跳", "")).isFalse();
     }
 
     /**

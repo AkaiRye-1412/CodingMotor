@@ -151,11 +151,35 @@ public class CatalogRowMapper {
 
     // ---------------------------------------------------------------- 类型
 
-    /** 命中行数最多的模板胜出；并列时按 A1 顺序（直线 → 力矩 → 音圈）。 */
+    /**
+     * 判定电机类型。
+     *
+     * <p><b>第一步：转矩类参数是旋转电机的决定性证据</b>（2026-11-20 用户裁定）。
+     * 只要命中 {@code torqueCont}（持续转矩）/ {@code torquePeak}（峰值转矩）/ {@code kt}（转矩常数）
+     * 里的 ≥2 个，直接判 TORQUE。
+     *
+     * <p>这条规则是为 <b>ACR 弧形电机</b>加的：样册把它归在「直线电机」章节（原文
+     * 「ACR 系列为无铁芯圆弧型直线电机，也叫弧形电机」），参数表里也带「磁吸力 / 电磁周期 /
+     * 线圈质量」这些直线电机才有的行——按「命中字段数最多」判定时，直线模板与力矩模板各命中
+     * 13 项打平，代码取靠前的 LINEAR 胜出，于是入库去找「持续推力 / 峰值推力」，
+     * ACR 全系列被判「缺少必填参数」整批跳过。而它的参数全是转矩（{@code Tcn 19.8 Nm}）、
+     * 转速、转动惯量，运动也是旋转（有限角度或 360°），必须走**旋转页签**计算。
+     *
+     * <p><b>第二步：其余按命中字段数最多者</b>（直线 → 力矩 → 音圈顺序，平手取靠前）。
+     * 音圈与直线共用「持续推力 / 峰值推力 / 力常数」的字段名，靠独有项
+     * {@code 行程 / 铁芯质量 / 运动间隙} 拉开差距（音圈 17 项 vs 直线 14 项），
+     * 所以不能用「独有字段命中数」直接比——那样音圈会被判成直线。
+     */
     private MotorType detectType(List<CatalogSummarySheet.SheetRow> rows) {
+        if (hasTorqueSignature(rows)) {
+            return MotorType.TORQUE;
+        }
         MotorType best = MotorType.LINEAR;
         int bestHits = -1;
         for (MotorType type : MotorCatalogTemplates.typeOrder()) {
+            if (type == MotorType.TORQUE) {
+                continue;                       // 转矩证据已在上面否决过，不再参与命中数竞争
+            }
             MotorTypeTemplate template = MotorCatalogTemplates.of(type);
             Set<String> keys = new LinkedHashSet<>();
             for (CatalogSummarySheet.SheetRow row : rows) {
@@ -170,6 +194,28 @@ public class CatalogRowMapper {
             }
         }
         return best;
+    }
+
+    /** 旋转电机的决定性字段：持续转矩 / 峰值转矩 / 转矩常数。 */
+    private static final Set<String> TORQUE_SIGNATURE_KEYS =
+            Set.of("torqueCont", "torquePeak", "kt");
+
+    /**
+     * 是否命中 ≥2 个转矩类字段（持续转矩 / 峰值转矩 / 转矩常数）。
+     *
+     * <p>阈值取 2 而不是 1：单看「转矩常数」一行不够稳（个别图纸会把「转矩常数」当附属信息列），
+     * 但「持续转矩 + 峰值转矩」同时出现就一定是旋转电机。
+     */
+    private boolean hasTorqueSignature(List<CatalogSummarySheet.SheetRow> rows) {
+        MotorTypeTemplate torque = MotorCatalogTemplates.of(MotorType.TORQUE);
+        int hits = 0;
+        for (CatalogSummarySheet.SheetRow row : rows) {
+            MotorField field = resolveField(torque, row);
+            if (field != null && TORQUE_SIGNATURE_KEYS.contains(field.key())) {
+                hits++;
+            }
+        }
+        return hits >= 2;
     }
 
     // ---------------------------------------------------------------- 字段

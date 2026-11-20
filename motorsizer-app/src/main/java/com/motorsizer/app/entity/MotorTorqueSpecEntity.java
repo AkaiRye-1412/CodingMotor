@@ -41,6 +41,8 @@ public class MotorTorqueSpecEntity {
     private BigDecimal pn;
     private BigDecimal poles;
     private BigDecimal totalMass;
+    /** 线圈质量（ACR 弧形电机等样册提供，第 68 轮）。 */
+    private BigDecimal moverMass;
     private BigDecimal inertia;
     private BigDecimal runoutAxial;
     private BigDecimal runoutRadial;

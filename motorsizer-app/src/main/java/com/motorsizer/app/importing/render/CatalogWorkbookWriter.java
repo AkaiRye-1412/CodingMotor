@@ -424,6 +424,7 @@ public class CatalogWorkbookWriter {
                 new String[]{"丢弃行数", String.valueOf(data.droppedRows())},
                 new String[]{"不采集参数", LayoutRules.EXCLUDED_PARAM_DESC},
                 new String[]{"按采集口径剔除", excludedSummary(data)},
+                new String[]{"额外采集参数", keptExtraSummary(data)},
                 new String[]{"冷却变体口径", CoolingVariants.rule()},
                 new String[]{"冷却变体", variantSummary(data.tables(), expansion)},
                 new String[]{"长表数据行", String.valueOf(dataRows)},
@@ -494,6 +495,18 @@ public class CatalogWorkbookWriter {
         return String.join("｜", parts);
     }
 
+    /** 「识别报告」里从机械参数分节额外捞取的项：采了哪类、几行，说明它们为什么出现。 */
+    private String keptExtraSummary(ParsedCatalog data) {
+        if (data.keptExtraParams() == null || data.keptExtraParams().isEmpty()) {
+            return "无（本样册机械参数分节里没有「" + LayoutRules.KEEP_EXTRA_PARAM_DESC + "」）";
+        }
+        List<String> parts = new ArrayList<>();
+        for (Map.Entry<String, Integer> e : data.keptExtraParams().entrySet()) {
+            parts.add(e.getKey() + " " + e.getValue() + " 行");
+        }
+        return "已采集（来自机械参数分节）：" + String.join("｜", parts);
+    }
+
     /** 「识别报告」里的分节说明：每节命中多少行、保留还是丢弃，让过滤结果可追溯。 */
     private String sectionSummary(ParsedCatalog data) {
         if (data.sectionRows().isEmpty()) {
@@ -503,7 +516,14 @@ public class CatalogWorkbookWriter {
         for (Map.Entry<String, Integer> e : data.sectionRows().entrySet()) {
             String name = e.getKey().isEmpty() ? "（表头区，无分节）" : e.getKey();
             boolean kept = e.getKey().isEmpty() || LayoutRules.KEEP_SECTIONS.contains(e.getKey());
-            parts.add(name + " " + e.getValue() + " 行" + (kept ? "（保留）" : "（已丢弃）"));
+            Integer extra = data.keptExtraParams() == null ? null : data.keptExtraParams().get(e.getKey());
+            if (!kept && extra != null && extra > 0) {
+                // 机械参数分节：整节丢弃，但质量/转动惯量这几行被捞出来采集了
+                parts.add(name + " " + e.getValue() + " 行（丢弃 " + (e.getValue() - extra)
+                        + " 行、采集 " + extra + " 行质量/转动惯量）");
+            } else {
+                parts.add(name + " " + e.getValue() + " 行" + (kept ? "（保留）" : "（已丢弃）"));
+            }
         }
         return String.join("｜", parts);
     }
