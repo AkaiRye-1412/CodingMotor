@@ -139,7 +139,10 @@ public class CatalogWorkbookWriter {
                     set(ws, r, 0,
                             CoolingVariants.appendSuffix(mergeModelConfig(table.model(), e.getKey()),
                                     table.variant()), styles, true);
-                    set(ws, r, 1, section, styles, true);
+                    // 行自带分节时以行为准：磁轨规格小表补进来的惯量行标「磁轨规格」，
+                    // 否则会被上一个保留分节（性能参数）冒名顶替，看不出数据来源
+                    set(ws, r, 1, row.section == null || row.section.isEmpty() ? section : row.section,
+                            styles, true);
                     set(ws, r, 2, row.name, styles, false);
                     set(ws, r, 3, row.sym, styles, true);
                     set(ws, r, 4, row.unit, styles, true);

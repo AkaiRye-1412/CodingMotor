@@ -109,6 +109,21 @@ public final class LayoutRules {
     public static final int MIN_NAMED_ROWS = 4;
 
     /**
+     * 磁轨规格小表的标题词。
+     *
+     * <p>ACR 弧形电机页面上，主参数表<b>右侧另画一张小表</b>「磁轨规格 / ACR240-TR36」，
+     * 只有「角度 / 质量 / 转动惯量」三行。它整块落在主表右边界之外（实测主表 right≈232，
+     * 小表从 x≈247 起），通用表格算法按右边界裁剪时把它整段裁掉了，所以单独按坐标取。
+     */
+    public static final String TRACK_SPEC_TITLE = "磁轨规格";
+
+    /** 磁轨型号的中缀：{@code ACR335-TR36} 中 {@code -TR} 之前就是电机型号前缀。 */
+    public static final String TRACK_MODEL_INFIX = "-TR";
+
+    /** 以「转动惯量」行为锚点，向上找磁轨型号的纵向跨度（pt）。 */
+    public static final double TRACK_SPEC_SPAN = 40.0;
+
+    /**
      * 只保留这些分节（2026-11-19 用户裁定：只抓性能参数；机械参数/编码器参数/其他信息一律丢弃）。
      *
      * <p>白名单而非黑名单：样册里同一含义的分节写法不统一（「其他信息」/「其它信息」），

@@ -103,6 +103,52 @@ class CoolingVariantsTest {
         assertThat(names(parts.get(1))).containsExactly("持续电流（水冷）@100℃");
     }
 
+    /**
+     * 线圈质量与冷却无关：样册只给一行「线圈质量（自冷）」时，气冷/水冷型号也要带上
+     * （2026-11-20 用户指出 AUM3：气冷型号因为「缺少必填参数：线圈质量」整批跳过）。
+     */
+    @Test
+    void sharesCoilMassAcrossCoolingVariants() {
+        CatalogTable table = table("AUM3-S1-S", List.of(
+                row("持续推力（自冷）@100℃", "Fcn", "N", "28"),
+                row("持续推力（气冷）@100℃", "Fca", "N", "34"),
+                row("持续推力（水冷）@100℃", "Fcw", "N", "37"),
+                row("线圈质量（自冷）", "mcn", "kg", "0.22")));
+
+        List<CatalogTable> parts = CoolingVariants.split(table);
+
+        assertThat(parts).extracting(CatalogTable::outputModel)
+                .containsExactly("AUM3-S1-S", "AUM3-S1-S-A", "AUM3-S1-S-W");
+        // 三个变体都带「线圈质量」，参数名保留原样
+        assertThat(names(parts.get(1))).containsExactly("持续推力（气冷）@100℃", "线圈质量（自冷）");
+        assertThat(names(parts.get(2))).containsExactly("持续推力（水冷）@100℃", "线圈质量（自冷）");
+        assertThat(parts.get(1).rows().get(1).values()).containsEntry("v0", "0.22");
+        // 共用参数不是「这个型号有这种冷却」的证据：只给线圈质量（自冷）不会凭空多出气冷/水冷型号
+        CatalogTable massOnly = table("AUM3-S9-S", List.of(
+                row("持续推力（自冷）@100℃", "Fcn", "N", "28"),
+                row("线圈质量（自冷）", "mcn", "kg", "0.22")));
+        assertThat(CoolingVariants.split(massOnly)).extracting(CatalogTable::outputModel)
+                .containsExactly("AUM3-S9-S");
+    }
+
+    /** 样册真按冷却分别给了质量时（两行都有值），不共用，各变体取自己的值。 */
+    @Test
+    void keepsPerCoolingMassWhenCatalogProvidesBoth() {
+        CatalogTable table = table("AUM3-S1-S", List.of(
+                row("持续推力（自冷）@100℃", "Fcn", "N", "28"),
+                row("持续推力（气冷）@100℃", "Fca", "N", "34"),
+                row("线圈质量（自冷）", "mcn", "kg", "0.22"),
+                row("线圈质量（气冷）", "mca", "kg", "0.24")));
+
+        List<CatalogTable> parts = CoolingVariants.split(table);
+
+        assertThat(parts).extracting(CatalogTable::outputModel)
+                .containsExactly("AUM3-S1-S", "AUM3-S1-S-A");
+        assertThat(names(parts.get(0))).containsExactly("持续推力（自冷）@100℃", "线圈质量（自冷）");
+        assertThat(names(parts.get(1))).containsExactly("持续推力（气冷）@100℃", "线圈质量（气冷）");
+        assertThat(parts.get(1).rows().get(1).values()).containsEntry("v0", "0.24");
+    }
+
     /** 只有气冷/水冷数据、没有自冷数据时：不出基型（否则会多一台缺持续参数的残型号）。 */
     @Test
     void skipsBaseModelWhenNoSelfCooledData() {

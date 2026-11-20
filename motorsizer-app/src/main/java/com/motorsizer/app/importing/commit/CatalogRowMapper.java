@@ -103,10 +103,18 @@ public class CatalogRowMapper {
                     + (int) MotorCatalogTemplates.DEFAULT_MAX_COIL_TEMP + " °C 入库（热校核用）");
         }
 
-        List<String> missing = template.requiredKeys().stream()
+        List<String> missing = new ArrayList<>(template.requiredKeys().stream()
                 .filter(key -> !spec.containsKey(key))
                 .map(key -> labelOf(template, key))
-                .toList();
+                .toList());
+        // 「录入必填」（直线/音圈的线圈质量、力矩的转动惯量，2026-11-20 用户裁定）：
+        // 样册里没有这一项就整台跳过，不留空入库。它们不在模板 required 里，
+        // 因为 required 会连带把选型准入判成 UNKNOWN（历史电机都没有这两项）。
+        for (String key : MotorCatalogTemplates.entryRequiredKeys(type)) {
+            if (!spec.containsKey(key)) {
+                missing.add(labelOf(template, key));
+            }
+        }
         if (!unmapped.isEmpty()) {
             List<String> shown = unmapped.stream().limit(5).toList();
             notes.add("未映射的参数：" + String.join("、", shown) + (unmapped.size() > 5 ? " 等" : ""));

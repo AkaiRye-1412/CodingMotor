@@ -33,8 +33,22 @@ public class MotorSpecValidator {
      * 校验并返回电机类型与规整后的规格数值；校验失败抛出业务异常。
      *
      * @param existingType C4 传入库中类型（不允许变更）；C3 传 {@code null}
+     * @param existingSpec C4 传入库中现有规格（用于「录入必填」的「原本就缺就放过」）；
+     *                     C3 传 {@code null}
      */
     public ValidatedMotor validate(MotorUpsertRequest request, MotorType existingType) {
+        return validate(request, existingType, null);
+    }
+
+    /**
+     * 带「原规格」的校验：编辑老电机时，本来就没有的「录入必填」项不再强制补。
+     *
+     * <p>库里 2026-11-20 之前录的电机基本都没有线圈质量/转动惯量，若一律强制，
+     * 用户改一个无关字段也会被「缺质量」挡住。口径是「不动它就放过」：原来有值、
+     * 本次被清空 → 报错；原来就没有、本次也没填 → 放过。
+     */
+    public ValidatedMotor validate(MotorUpsertRequest request, MotorType existingType,
+                                   Map<String, BigDecimal> existingSpec) {
         MotorType type = resolveType(request, existingType);
         MotorTypeTemplate template = MotorCatalogTemplates.of(type);
 
@@ -43,7 +57,7 @@ public class MotorSpecValidator {
             throw new BusinessException(ErrorCode.COMMON_VALIDATION_FAILED, "参数校验失败", commonErrors);
         }
 
-        Map<String, BigDecimal> spec = validateSpec(type, template, request.spec());
+        Map<String, BigDecimal> spec = validateSpec(type, template, request.spec(), existingSpec);
         return new ValidatedMotor(type, spec);
     }
 
@@ -143,7 +157,8 @@ public class MotorSpecValidator {
      * 规则 1–8：白名单、必填、数值形态与业务范围。
      */
     private Map<String, BigDecimal> validateSpec(
-            MotorType type, MotorTypeTemplate template, Map<String, Object> rawSpec) {
+            MotorType type, MotorTypeTemplate template, Map<String, Object> rawSpec,
+            Map<String, BigDecimal> existingSpec) {
 
         Map<String, Object> raw = rawSpec == null ? Map.of() : rawSpec;
         Set<String> allowed = template.allowedKeys();
@@ -196,11 +211,23 @@ public class MotorSpecValidator {
         }
 
         // 规则 1：必填 = K2 req 集合，一次列出全部缺项
-        List<FieldError> missing = template.requiredKeys().stream()
+        List<FieldError> missing = new ArrayList<>(template.requiredKeys().stream()
                 .filter(key -> !normalized.containsKey(key))
                 .map(key -> new FieldError("spec." + key,
                         template.field(key).map(MotorField::label).orElse(key) + "必填"))
-                .toList();
+                .toList());
+        // 录入必填（直线/音圈的线圈质量、力矩的转动惯量，2026-11-20 用户裁定）。
+        // 新建必须填；编辑时「原本就缺」的放过，不逼用户为了改别的字段补历史数据。
+        for (String key : MotorCatalogTemplates.entryRequiredKeys(type)) {
+            if (normalized.containsKey(key)) {
+                continue;
+            }
+            if (existingSpec != null && !existingSpec.containsKey(key)) {
+                continue;
+            }
+            missing.add(new FieldError("spec." + key,
+                    template.field(key).map(MotorField::label).orElse(key) + "必填"));
+        }
         if (!missing.isEmpty()) {
             throw new BusinessException(ErrorCode.MOTOR_SPEC_REQUIRED, "必填规格字段缺失", missing);
         }

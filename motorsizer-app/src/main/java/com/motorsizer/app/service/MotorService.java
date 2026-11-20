@@ -191,7 +191,8 @@ public class MotorService {
         MotorEntity existing = requireMotor(id);
         MotorType existingType = requireType(existing);
 
-        MotorSpecValidator.ValidatedMotor validated = validator.validate(request, existingType);
+        MotorSpecValidator.ValidatedMotor validated =
+                validator.validate(request, existingType, existingSpecOf(existingType, id));
         ensureUnique(request.modelName().trim(), request.configName().trim(), id);
 
         LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
@@ -426,6 +427,28 @@ public class MotorService {
                 coilSpecMapper.updateById(entity);
             }
         }
+    }
+
+    /** 库里现有的规格数值（供「录入必填」判断「原本就缺就放过」，不逼用户补历史数据）。 */
+    private Map<String, java.math.BigDecimal> existingSpecOf(MotorType type, Long motorId) {
+        Object entity = switch (type) {
+            case LINEAR -> linearSpecMapper.selectOne(
+                    new QueryWrapper<MotorLinearSpecEntity>().eq("motor_id", motorId));
+            case TORQUE -> torqueSpecMapper.selectOne(
+                    new QueryWrapper<MotorTorqueSpecEntity>().eq("motor_id", motorId));
+            case COIL -> coilSpecMapper.selectOne(
+                    new QueryWrapper<MotorCoilSpecEntity>().eq("motor_id", motorId));
+        };
+        if (entity == null) {
+            return Map.of();
+        }
+        Map<String, java.math.BigDecimal> spec = new LinkedHashMap<>();
+        MotorSpecConverter.toSpecMap(type, entity).forEach((key, value) -> {
+            if (value instanceof java.math.BigDecimal decimal) {
+                spec.put(key, decimal);
+            }
+        });
+        return spec;
     }
 
     /** 规格行应始终存在（C3 同事务写入）；缺失视为历史数据损坏。 */

@@ -18,6 +18,7 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -232,7 +233,119 @@ public class CatalogParser {
             notes.putAll(parseFootnotes(lines, block.end));
             got++;
         }
+        // 磁轨规格小表：与主表分开画在页面右侧，上面按右边界裁剪时整块被裁掉了，这里补一次
+        if (!ocrMode) {
+            attachTrackInertia(pno, runs, tables);
+        }
         return got;
+    }
+
+    /**
+     * 磁轨规格小表 → 电机的转动惯量（ACR 弧形电机）。
+     *
+     * <p>该小表只有「角度 / 质量 / 转动惯量」三行，型号是 {@code ACR240-TR36} 这类磁轨件，
+     * 但它是同页电机的**唯一**惯量来源，所以补进对应电机的 {@code inertia}。
+     *
+     * <p>三条口径（2026-11-20 用户裁定）：
+     * <ol>
+     *   <li>判据只用「转动惯量」这个词 + 同一基线上的 kg 单位，不猜版式；页面上没有
+     *       「磁轨规格」标题就直接返回，避免把主表性能参数里的「转动惯量」误当磁轨值；</li>
+     *   <li>可选磁轨有多根时（ACR335 有 TR36/TR54）取<b>较大值</b>——惯量低估会把加速转矩
+     *       算小，选型偏危险；</li>
+     *   <li>只取转动惯量。小表里的「质量 m_track」是磁轨（定子侧固定件）的质量，不是电机参数；
+     *       线圈质量在主参数表里已经采到了。</li>
+     * </ol>
+     */
+    private void attachTrackInertia(int pno, List<TextRun> runs, List<CatalogTable> tables) {
+        boolean hasTitle = runs.stream()
+                .anyMatch(r -> r.text().contains(LayoutRules.TRACK_SPEC_TITLE));
+        if (!hasTitle) {
+            return;
+        }
+        for (TextRun hit : runs) {
+            if (!hit.text().contains("转动惯量")) {
+                continue;
+            }
+            List<TextRun> sameLine = runs.stream()
+                    .filter(r -> Math.abs(r.oy() - hit.oy()) <= LayoutRules.LINE_TOLERANCE)
+                    .toList();
+            boolean kilos = sameLine.stream()
+                    .anyMatch(r -> r.text().toLowerCase(Locale.ROOT).contains("kg"));
+            if (!kilos) {
+                continue;
+            }
+            // 值列可能有多个（双磁轨），取最大；上标「²」字号只有正文的 40%，按字号排除
+            String value = null;
+            double max = Double.NEGATIVE_INFINITY;
+            for (TextRun r : sameLine) {
+                String text = r.text().strip();
+                if (r.x0() <= hit.x1() || r.size() < hit.size() * 0.8
+                        || !text.matches("\\d+(\\.\\d+)?")) {
+                    continue;
+                }
+                double v = Double.parseDouble(text);
+                if (v > max) {
+                    max = v;
+                    value = text;
+                }
+            }
+            if (value == null) {
+                continue;
+            }
+            String prefix = trackModelPrefix(runs, hit.oy());
+            if (prefix == null) {
+                continue;
+            }
+            appendInertiaRow(pno, prefix, value, hit.oy(), tables);
+        }
+    }
+
+    /** 磁轨型号（{@code ACR335-TR36}）去掉 {@code -TRxx} 后的电机型号前缀。 */
+    private static String trackModelPrefix(List<TextRun> runs, double anchorY) {
+        String best = null;
+        double bestDy = Double.MAX_VALUE;
+        for (TextRun r : runs) {
+            int cut = r.text().indexOf(LayoutRules.TRACK_MODEL_INFIX);
+            if (cut <= 0) {
+                continue;
+            }
+            double dy = Math.abs(r.oy() - anchorY);
+            if (dy > LayoutRules.TRACK_SPEC_SPAN || dy >= bestDy) {
+                continue;
+            }
+            bestDy = dy;
+            best = r.text().strip().substring(0, cut);
+        }
+        return best;
+    }
+
+    /** 把惯量行追加到同页、型号前缀匹配的那张表（表是 record，rows 列表要重建）。 */
+    private static void appendInertiaRow(int pno, String prefix, String value, double oy,
+                                         List<CatalogTable> tables) {
+        for (int i = 0; i < tables.size(); i++) {
+            CatalogTable t = tables.get(i);
+            if (t.page() != pno
+                    || !(t.model().equals(prefix) || t.model().startsWith(prefix + "-"))) {
+                continue;
+            }
+            // 文字层与 OCR 可能各跑一次，已有惯量行就不再追加
+            if (t.rows().stream().anyMatch(r -> !r.isSection() && r.name().contains("转动惯量"))) {
+                return;
+            }
+            TableRow row = new TableRow();
+            row.oy = oy;
+            row.name = "转动惯量";
+            row.sym = "Jr";
+            row.unit = "kg·m²";
+            // 标明来源，Excel「类别」列会显示「磁轨规格」，不与性能参数混在一起
+            row.section = LayoutRules.TRACK_SPEC_TITLE;
+            row.values.put("v0", value);
+            List<TableRow> rows = new ArrayList<>(t.rows());
+            rows.add(row);
+            tables.set(i, new CatalogTable(t.page(), t.model(), t.labels(), t.configs(),
+                    rows, t.variant()));
+            return;
+        }
     }
 
     /** 参数名里不该出现的句读标点：出现即说明抓到的是说明文字而非参数名。 */

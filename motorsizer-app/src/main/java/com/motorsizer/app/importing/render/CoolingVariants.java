@@ -3,7 +3,10 @@ package com.motorsizer.app.importing.render;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -32,7 +35,11 @@ import java.util.regex.Pattern;
  *   <li>不带标注的通用参数三个型号<b>都带</b>，即「其他参数维持原型号」；</li>
  *   <li>某个参数只有气冷值、没有水冷值时，水冷型号<b>留空</b>，不拿别的冷却的值顶替；</li>
  *   <li>样册里<b>压根没有值</b>（写成 {@code -} / {@code —}）的，说明该型号不做那种冷却——
- *       不生成这个变体型号（见 {@link #partOf} 的列筛选）。</li>
+ *       不生成这个变体型号（见 {@link #partOf} 的列筛选）；</li>
+ *   <li><b>机械参数（线圈/动子质量、转动惯量）所有变体共用</b>（2026-11-20 用户指出，见
+ *       {@link #sharedAgnosticKeys}）：这几项与冷却方式无关，样册里常跟着第一条冷却行写成
+ *       「线圈质量（自冷）」，只有一份值。若按标注严格分流，气冷/水冷型号就会因为
+ *       「缺少必填参数：线圈质量」整批被跳过（AUM3 踩过）。</li>
  * </ol>
  *
  * <p>拆分只发生在写 Excel 这一步（{@link CatalogWorkbookWriter}），解析结果本身不动；
@@ -173,11 +180,13 @@ public final class CoolingVariants {
      * <p>拆出的表与原表<b>共用同一批行对象</b>——只做筛选，不改行内容（参数名保留原样）。
      */
     public static List<CatalogTable> split(CatalogTable table) {
+        Set<String> shared = sharedAgnosticKeys(table);
         EnumSet<Variant> kinds = EnumSet.noneOf(Variant.class);
         for (TableRow row : table.rows()) {
-            if (!row.isSection()) {
-                kinds.add(classify(row.name()));
+            if (row.isSection() || isShared(row, shared)) {
+                continue;
             }
+            kinds.add(classify(row.name()));
         }
         boolean labeled = kinds.contains(Variant.SELF) || kinds.contains(Variant.AIR)
                 || kinds.contains(Variant.WATER);
@@ -190,20 +199,21 @@ public final class CoolingVariants {
         // （2026-11-19 裁定）——AKM/AKH 的 -W 系列只给水冷值，出基型会多一台缺
         // 「持续电流/持续推力」的残型号，入库时只能「跳过」，只会添乱。
         if (kinds.contains(Variant.SELF)) {
-            addPart(out, table, Variant.SELF);
+            addPart(out, table, Variant.SELF, shared);
         }
         if (kinds.contains(Variant.AIR)) {
-            addPart(out, table, Variant.AIR);
+            addPart(out, table, Variant.AIR, shared);
         }
         if (kinds.contains(Variant.WATER)) {
-            addPart(out, table, Variant.WATER);
+            addPart(out, table, Variant.WATER, shared);
         }
         return out.isEmpty() ? List.of(table) : out;
     }
 
     /** 变体表没数据时 {@link #partOf} 返回 {@code null} —— 这个型号不该新增。 */
-    private static void addPart(List<CatalogTable> out, CatalogTable table, Variant variant) {
-        CatalogTable part = partOf(table, variant);
+    private static void addPart(List<CatalogTable> out, CatalogTable table, Variant variant,
+                                Set<String> shared) {
+        CatalogTable part = partOf(table, variant, shared);
         if (part != null) {
             out.add(part);
         }
@@ -225,10 +235,10 @@ public final class CoolingVariants {
      *
      * @return 拆出的表；本变体没有任何实值时返回 {@code null}
      */
-    private static CatalogTable partOf(CatalogTable table, Variant variant) {
+    private static CatalogTable partOf(CatalogTable table, Variant variant, Set<String> shared) {
         List<TableRow> rows = new ArrayList<>(table.rows().size());
         for (TableRow row : table.rows()) {
-            if (row.isSection() || variant.accepts(classify(row.name()))) {
+            if (row.isSection() || isShared(row, shared) || variant.accepts(classify(row.name()))) {
                 rows.add(row);
             }
         }
@@ -239,7 +249,8 @@ public final class CoolingVariants {
         for (TableRow row : rows) {
             // 未标注的通用行（峰值电流这类）不是「这个型号有这种冷却」的证据：
             // 拿它当判据的话，每个型号都会因为「有峰值电流」而多出一台 -A / -W。
-            if (row.isSection() || classify(row.name()) != variant) {
+            // 共用的机械参数（线圈质量）同理——它写着「（自冷）」也不代表只有自冷型号有。
+            if (row.isSection() || isShared(row, shared) || classify(row.name()) != variant) {
                 continue;
             }
             for (int i = 0; i < cols; i++) {
@@ -257,6 +268,74 @@ public final class CoolingVariants {
                     rows, variant);
         }
         return project(table, rows, keep, variant);
+    }
+
+    /**
+     * 本表里「所有冷却变体共用」的机械参数（2026-11-20 用户指出 AUM3）。
+     *
+     * <p>样册常这么排：
+     * <pre>
+     * 线圈质量（自冷）  mcn  kg  0.22  0.45 ...
+     * 线圈长度（自冷）  Lcn  mm  61.0  121.0 ...
+     * 线圈长度（气冷）  Lca  mm  61.0  121.0 ...
+     * </pre>
+     * 「线圈质量」只有<b>一行</b>，冷却标注只是跟着第一条冷却行一起写的排版结果——同一型号分
+     * 自冷/气冷/水冷，线圈还是同一个线圈，质量不变。若按标注严格分流，气冷型号
+     * （{@code AUM3-S1-S-A}）就只剩「持续推力（气冷）」这些行，入库时被
+     * 「缺少必填参数：线圈质量」整台跳过。
+     *
+     * <p>判据（保守，宁可少共用也不错借值）：
+     * <ul>
+     *   <li>只看机械参数里<b>与冷却无关</b>的那几项——{@link LayoutRules#KEEP_EXTRA_PARAM_WORDS}
+     *       （线圈/动子质量、转动惯量）；</li>
+     *   <li>同一参数在本表里<b>只出现一行</b>才算共用。样册若真按冷却分别给了质量
+     *       （{@code 线圈质量（自冷）} + {@code 线圈质量（水冷）} 各有值），说明质量随冷却变，
+     *       这时退回严格分流，各变体取自己的值。</li>
+     * </ul>
+     *
+     * <p>这些行被放进每个变体表时<b>参数名原样保留</b>（口径 1：与样册逐字对得上），
+     * 入库匹配字段靠名字里的「线圈质量」这类关键词，与冷却标注无关。
+     *
+     * @return 需要共用的参数归一名（{@link #agnosticKey}）
+     */
+    private static Set<String> sharedAgnosticKeys(CatalogTable table) {
+        Map<String, Integer> counts = new HashMap<>();
+        for (TableRow row : table.rows()) {
+            String key = agnosticKey(row.name());
+            if (key != null) {
+                counts.merge(key, 1, Integer::sum);
+            }
+        }
+        Set<String> shared = new HashSet<>();
+        for (Map.Entry<String, Integer> entry : counts.entrySet()) {
+            if (entry.getValue() == 1) {
+                shared.add(entry.getKey());
+            }
+        }
+        return shared;
+    }
+
+    /** 该行是不是本表要共用的机械参数。 */
+    private static boolean isShared(TableRow row, Set<String> shared) {
+        String key = agnosticKey(row.name());
+        return key != null && shared.contains(key);
+    }
+
+    /**
+     * 机械参数的「同一参数」比较名：先认名字关键词（不是质量/惯量就返回 {@code null}），
+     * 再<b>去掉冷却标注</b>后归一，好让「线圈质量（自冷）」与「线圈质量（水冷）」算同一项。
+     */
+    private static String agnosticKey(String name) {
+        if (!LayoutRules.isKeptExtraParameter(name, null)) {
+            return null;
+        }
+        return LayoutRules.keyword(stripCooling(name));
+    }
+
+    /** 去掉名字里的冷却标注（括号里的与裸露的都去）；只用于「是不是同一个参数」的比较。 */
+    private static String stripCooling(String name) {
+        String out = BRACKETED.matcher(name).replaceAll("");
+        return BARE.matcher(out).replaceAll("");
     }
 
     /** 表的实际列数：标签数与原表值列数取大（个别表标签缺项，值列仍在）。 */
@@ -408,6 +487,7 @@ public final class CoolingVariants {
     public static String rule() {
         return "参数名含「气冷」→ 型号追加 -A，含「水冷」→ 追加 -W；含「自冷」或不带冷却标注的留在原型号；"
                 + "不带标注的通用参数各型号共用；某型号缺某项就留空，不借用其他冷却的值；"
-                + "样册里该型号没有对应的值（写成 - 或 —）的，视为不做这种冷却，不新增型号";
+                + "样册里该型号没有对应的值（写成 - 或 —）的，视为不做这种冷却，不新增型号；"
+                + "线圈/动子质量、转动惯量与冷却无关（同表只有一行时），自冷/气冷/水冷型号共用同一个值";
     }
 }

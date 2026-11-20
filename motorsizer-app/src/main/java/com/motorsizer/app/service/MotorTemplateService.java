@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * A1：把 domain 的 K2 模板转换为接口结构。模板来自代码（T-4），不查库、不下发派生公式。
@@ -30,11 +31,16 @@ public class MotorTemplateService {
     }
 
     private TypeTemplateDto toDto(MotorTypeTemplate template) {
+        // 下发时把「录入必填」（线圈质量 / 转动惯量）也算进 required：表单要能标红星，
+        // 否则用户点保存才知道缺项。它们不进域模型 required，是为了不牵连选型准入。
+        Set<String> entryRequired = MotorCatalogTemplates.entryRequiredKeys(template.type());
         List<GroupDto> groups = template.groups().stream()
                 .map(group -> new GroupDto(
                         group.title(),
                         group.optionalAdd(),
-                        group.fields().stream().map(this::toFieldDto).toList()))
+                        group.fields().stream()
+                                .map(field -> toFieldDto(field, entryRequired.contains(field.key())))
+                                .toList()))
                 .toList();
         return new TypeTemplateDto(
                 template.label(),
@@ -45,12 +51,12 @@ public class MotorTemplateService {
                 groups);
     }
 
-    private FieldDto toFieldDto(MotorField field) {
+    private FieldDto toFieldDto(MotorField field, boolean entryRequired) {
         return new FieldDto(
                 field.key(),
                 field.label(),
                 field.unit(),
-                field.required(),
+                field.required() || entryRequired,
                 field.factor(),
                 field.display(),
                 field.aliases(),

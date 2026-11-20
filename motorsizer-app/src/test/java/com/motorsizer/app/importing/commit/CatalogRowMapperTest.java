@@ -4,6 +4,7 @@ import com.motorsizer.domain.catalog.MotorType;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -33,7 +34,9 @@ class CatalogRowMapperTest {
                 row("AXD120-71-S", "性能参数", "热耗散常数", "Kth", "W/°C", "0.715"),
                 row("AXD120-71-S", "性能参数", "最高母线电压", "Ubus", "Vdc", "600"),
                 row("AXD120-71-S", "性能参数", "最高转速 @峰值转矩", "Ωmax", "rpm", "1700"),
-                row("AXD120-71-S", "性能参数", "最高转速 @持续转矩", "Ωmax", "rpm", "2000"));
+                row("AXD120-71-S", "性能参数", "最高转速 @持续转矩", "Ωmax", "rpm", "2000"),
+                // 第 70 轮：力矩电机必填转动惯量（样册里在机械参数分节，由采集口径捞取）
+                row("AXD120-71-S", "机械参数", "转动惯量", "Jr", "kg·m²", "0.015"));
 
         List<CatalogRowMapper.MappedMotor> motors = mapper.map(rows);
 
@@ -207,7 +210,9 @@ class CatalogRowMapperTest {
                 row(model, "性能参数", "Continuous Power Dissipation (WC)", "Pcw", "W", "1485"),
                 row(model, "性能参数", "Thermal Dissipation Constant (WC)", "Kthw", "W/°C", "19.8"),
                 row(model, "性能参数", "Magnetic Period", "", "mm", "36"),
-                row(model, "性能参数", "Maximum Bus Voltage", "Ubus", "Vdc", "600"));
+                row(model, "性能参数", "Maximum Bus Voltage", "Ubus", "Vdc", "600"),
+                // 第 70 轮：直线电机必填线圈质量
+                row(model, "机械参数", "Moving Mass", "mcn", "kg", "12.5"));
 
         CatalogRowMapper.MappedMotor motor = mapper.map(rows).get(0);
 
@@ -289,7 +294,9 @@ class CatalogRowMapperTest {
                 // 下面三行是直线电机独有项，正是它们此前把 ACR 拉到了直线模板
                 row("ACR240-S5-S", "性能参数", "电磁周期", "τNN", "degree", "7.2"),
                 row("ACR240-S5-S", "性能参数", "磁吸力", "Fa", "kN", "0"),
-                row("ACR240-S5-S", "性能参数", "线圈质量 (自冷)", "mcn", "kg", "1.1"));
+                row("ACR240-S5-S", "性能参数", "线圈质量 (自冷)", "mcn", "kg", "1.1"),
+                // 惯量取自样册右侧「磁轨规格」小表（ACR240-TR36 的 J_r），由解析层补进来
+                row("ACR240-S5-S", "性能参数", "转动惯量", "Jr", "kg·m²", "0.07"));
 
         CatalogRowMapper.MappedMotor motor = mapper.map(rows).get(0);
 
@@ -299,7 +306,63 @@ class CatalogRowMapperTest {
         assertThat(motor.spec()).containsEntry("torqueCont", new BigDecimal("19.8"))
                 .containsEntry("kt", new BigDecimal("19.77"))
                 // 第 68 轮：力矩模板也有「线圈质量」，ACR 的 1.1 kg 不再进「未映射的参数」
-                .containsEntry("moverMass", new BigDecimal("1.1"));
+                .containsEntry("moverMass", new BigDecimal("1.1"))
+                // 第 70 轮：惯量来自磁轨规格小表，满足「力矩必填转动惯量」
+                .containsEntry("inertia", new BigDecimal("0.07"));
+    }
+
+    /** 第 70 轮：力矩电机缺转动惯量 → 跳过（惯量是力矩选型的核心，不能留空入库）。 */
+    @Test
+    void torqueWithoutInertiaIsSkipped() {
+        List<CatalogSummarySheet.SheetRow> rows = List.of(
+                row("AXD120-71-S", "性能参数", "持续转矩 @100°C", "Tcn", "Nm", "3.4"),
+                row("AXD120-71-S", "性能参数", "峰值转矩", "Tpk", "Nm", "10.0"),
+                row("AXD120-71-S", "性能参数", "转矩常数 ±10%", "Kt", "Nm/Arms", "3.0"),
+                row("AXD120-71-S", "性能参数", "反电势常数 ±10%", "Ke", "Vpeak/rpm", "62"),
+                row("AXD120-71-S", "性能参数", "相间电阻 @25°C ±10%", "R25", "Ω", "1.92"),
+                row("AXD120-71-S", "性能参数", "持续电流 @100°C", "Icn", "Arms", "3.8"),
+                row("AXD120-71-S", "性能参数", "峰值电流", "Ipk", "Arms", "12.2"),
+                row("AXD120-71-S", "性能参数", "热耗散常数", "Kth", "W/°C", "0.715"),
+                row("AXD120-71-S", "性能参数", "最高母线电压", "Ubus", "Vdc", "600"));
+
+        CatalogRowMapper.MappedMotor motor = mapper.map(rows).get(0);
+
+        assertThat(motor.type()).isEqualTo(MotorType.TORQUE);
+        assertThat(motor.missing()).contains("转动惯量");
+    }
+
+    /** 第 70 轮：直线电机缺线圈质量 → 跳过。 */
+    @Test
+    void linearWithoutMoverMassIsSkipped() {
+        CatalogRowMapper.MappedMotor motor = mapper.map(linearRowsWithoutMass()).get(0);
+
+        assertThat(motor.type()).isEqualTo(MotorType.LINEAR);
+        assertThat(motor.missing()).contains("线圈质量");
+    }
+
+    /** 补齐线圈质量后即可入库（同一条直线数据，只多一行质量）。 */
+    @Test
+    void linearWithMoverMassPasses() {
+        List<CatalogSummarySheet.SheetRow> rows = new ArrayList<>(linearRowsWithoutMass());
+        rows.add(row("AKM100-B4/D79", "性能参数", "线圈质量", "mcn", "kg", "0.8"));
+
+        CatalogRowMapper.MappedMotor motor = mapper.map(rows).get(0);
+
+        assertThat(motor.missing()).isEmpty();
+        assertThat(motor.spec()).containsEntry("moverMass", new BigDecimal("0.8"));
+    }
+
+    private static List<CatalogSummarySheet.SheetRow> linearRowsWithoutMass() {
+        return List.of(
+                row("AKM100-B4/D79", "性能参数", "持续推力", "Fcn", "N", "120"),
+                row("AKM100-B4/D79", "性能参数", "峰值推力", "Fpk", "N", "360"),
+                row("AKM100-B4/D79", "性能参数", "力常数 ±10%", "Kf", "N/Arms", "40"),
+                row("AKM100-B4/D79", "性能参数", "反电势常数 ±10%", "Ke", "Vpeak/(m/s)", "33"),
+                row("AKM100-B4/D79", "性能参数", "相间电阻 @25°C ±10%", "R25", "Ω", "2.4"),
+                row("AKM100-B4/D79", "性能参数", "持续电流 @100°C", "Icn", "Arms", "3.0"),
+                row("AKM100-B4/D79", "性能参数", "峰值电流", "Ipk", "Arms", "9.0"),
+                row("AKM100-B4/D79", "性能参数", "热耗散常数", "Kth", "W/°C", "1.2"),
+                row("AKM100-B4/D79", "性能参数", "最高母线电压", "Ubus", "Vdc", "600"));
     }
 
     private static CatalogSummarySheet.SheetRow row(String model, String section, String name,

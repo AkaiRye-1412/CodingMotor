@@ -3,6 +3,7 @@ package com.motorsizer.domain.catalog;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * K2：三套字段模板（直线 / 力矩 / 音圈）。
@@ -307,6 +308,28 @@ public final class MotorCatalogTemplates {
 
     public static Map<MotorType, MotorTypeTemplate> all() {
         return TEMPLATES;
+    }
+
+    /**
+     * 「录入 / 采集」必填的机械参数（2026-11-20 用户裁定）。
+     *
+     * <p>直线与音圈采「线圈质量」，力矩采「转动惯量」。这三个字段的 {@code required} 标记
+     * 仍是 {@code false} —— 有意为之：{@code required=true} 会让 {@code MotorEvaluator}
+     * 把库里所有缺这两项的历史电机判成 {@code UNKNOWN}（「信息不全，无法判定」），
+     * 整个选型页会大面积推不出电机。所以「必填」只落在两处入口：
+     * <ul>
+     *   <li>{@code CatalogRowMapper}：样册里缺这一项 → 该台跳过，不入库；</li>
+     *   <li>{@code MotorSpecValidator}：手工录入必须填；编辑老电机时「原本也缺」的放过，
+     *       不逼用户为了改个无关字段去补历史数据。</li>
+     * </ul>
+     *
+     * <p>选型准入（{@link com.motorsizer.domain.screening.MotorEvaluator}）不受影响。
+     */
+    public static Set<String> entryRequiredKeys(MotorType type) {
+        return switch (type) {
+            case LINEAR, COIL -> Set.of("moverMass");
+            case TORQUE -> Set.of("inertia");
+        };
     }
 
     /**

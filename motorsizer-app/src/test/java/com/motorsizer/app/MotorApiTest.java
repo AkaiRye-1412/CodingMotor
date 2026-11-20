@@ -307,6 +307,8 @@ class MotorApiTest {
         spec.put("tMax", 110);
         spec.put("kth", 1.1);
         spec.put("uBus", 400);
+        // 第 70 轮：直线电机必填线圈质量
+        spec.put("moverMass", 1.1);
         payload.put("spec", spec);
         return payload;
     }
@@ -350,6 +352,8 @@ class MotorApiTest {
         spec.put("uBus", 311);
         spec.put("maxSpeedPeak", 2000);
         spec.put("maxSpeedCont", 800);
+        // 第 70 轮：力矩电机必填转动惯量
+        spec.put("inertia", 0.015);
         return spec;
     }
 
