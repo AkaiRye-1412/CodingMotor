@@ -222,7 +222,7 @@ const TYPE_LABEL: Record<string, string> = { linear: '直线', torque: '力矩',
 const detailVisible = ref(false)
 const detailMotorId = ref<number | null>(null)
 
-/** 入库成功（新增 / 覆盖）的电机：打开只读参数页，核对库里到底写进去了什么。 */
+/** 入库成功（新增 / 覆盖）的电机：打开参数页核对库里到底写进去了什么，并可当场改（2026-11-21）。 */
 function openDetail(row: ImportCommitItem): void {
   if (row.motorId == null) return
   detailMotorId.value = row.motorId
@@ -529,7 +529,7 @@ function statusType(status: string): 'success' | 'warning' | 'danger' {
           <el-table-column label="说明" min-width="200" show-overflow-tooltip>
             <template #default="{ row }">{{ row.message }}</template>
           </el-table-column>
-          <el-table-column label="操作" width="110" align="right">
+          <el-table-column label="操作" width="122" align="right">
             <template #default="{ row }">
               <el-button
                 v-if="row.status === 'SKIPPED' || row.status === 'FAILED'"
@@ -547,7 +547,7 @@ function statusType(status: string): 'success' | 'warning' | 'danger' {
                 link
                 @click="openDetail(row)"
               >
-                查看
+                查看 / 编辑
               </el-button>
             </template>
           </el-table-column>
@@ -557,7 +557,8 @@ function statusType(status: string): 'success' | 'warning' | 'danger' {
           结构与冷却样册一般不给，按模板默认写入（直线 无铁芯/普通、力矩 有铁芯/普通、音圈 音圈/普通），
           可在电机库中按实物修改。入库方式记为「识别草稿」，来源文档即该 PDF。
           <br />
-          已入库的电机可点该行右侧「<b>查看</b>」核对库里实际写入的参数（只读，含热耗散常数等仅录入可见的项）。
+          已入库的电机可点该行右侧「<b>查看 / 编辑</b>」核对库里实际写入的参数（含热耗散常数等仅录入可见的项），
+          <b>识别错了的项不必重新识别样册</b>：在参数页点「编辑参数」直接改，保存即写回同一台电机（不会新增一条）。
           被<b>跳过 / 失败</b>的电机可点「补全参数」：样册已识别的值会预填，补齐保存即写入电机库
           （只写这一台，不会重跑整批）；若要按 Excel 整体重写，点上方「生成并下载 Excel」回看结果再点「入库」。
           计算结果页的候选是上一次计算的快照，<b>重新计算一次</b>才会看到新入库的电机。

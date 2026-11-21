@@ -6,23 +6,46 @@ import { useMotorStore } from '@/stores/motor'
 import { ApiError } from '@/types/api'
 import type { MotorDetail } from '@/types/motor'
 import type { FieldSpec } from '@/types/template'
+import MotorEntryDialog from '@/dialogs/MotorEntryDialog.vue'
 
 /**
- * 只读查看一台电机的全部参数（电机库里的**当前值**）。
+ * 查看一台电机的全部参数（电机库里的**当前值**），并可当场改。
  *
  * <p>入口：样册入库结果里点「查看」——刚入库成功也要能核对「样册识别出来的值到底写进去了什么」，
  * 不必再切到电机库翻这台电机。数据走 C2 详情接口，所以看到的就是库里真实值（不是入库时的快照）。
+ *
+ * <p>2026-11-21（用户要求）：这里以前是纯只读，「查看」完想改一个识别错的参数就没路可走。
+ * 现在页脚多了「编辑参数」——复用 M10 的录入表单（`MotorEntryDialog` + `editMotorId`）改，
+ * 保存走 C4 整体替换，保存后本页自动重读，看到的就是改完的当前值。
  *
  * <p>展示口径：按 K2 模板分组**全字段**列出（含仅录入表单可见的 kth / pn / tmax 等，
  * 因为这些正是样册会识别、用户最想核对的项）；库里没有值的显示「—」，必填而缺值的再标「缺」。
  */
 const visible = defineModel<boolean>({ required: true })
 const props = defineProps<{ motorId?: number | null }>()
+const emit = defineEmits<{ (e: 'updated', payload: { motorId: number }): void }>()
 
 const motorStore = useMotorStore()
 const detail = ref<MotorDetail | null>(null)
 const loading = ref(false)
 const error = ref('')
+
+// ---------------------------------------------------------------- 编辑（C4）
+const editVisible = ref(false)
+const editMotorId = ref<number | null>(null)
+
+function openEdit(): void {
+  const id = detail.value?.motorId
+  if (id == null) return
+  editMotorId.value = id
+  editVisible.value = true
+}
+
+/** 保存成功：重读本页（改完的值就是新的「当前值」），并通知外部（入库结果页）刷新。 */
+function onEdited(payload: { motorId: number }): void {
+  load(true)
+  emit('updated', payload)
+}
 
 /** 样册用词：产品「普通」冷却 = 样册「自冷」（第 51 轮）。 */
 const COOL_LABEL: Record<string, string> = { 普通: '自冷', 水冷: '水冷', 气冷: '气冷' }
@@ -86,15 +109,24 @@ const groups = computed(() => {
 const filledCount = computed(() => groups.value.reduce((n, g) => n + g.rows.filter((r) => !r.empty).length, 0))
 const missingRows = computed(() => groups.value.flatMap((g) => g.rows.filter((r) => r.missing)))
 
-async function load(): Promise<void> {
+/**
+ * 读库里当前值。
+ *
+ * @param silent 静默刷新（改完参数后重读）：保留旧内容不闪空，失败也不把已显示的内容换成错误页
+ */
+async function load(silent = false): Promise<void> {
   const id = props.motorId
   if (id == null) return
-  loading.value = true
-  error.value = ''
-  detail.value = null
+  if (!silent) {
+    loading.value = true
+    error.value = ''
+    detail.value = null
+  }
   try {
     detail.value = await getMotor(id)
+    error.value = ''
   } catch (err) {
+    if (silent) return
     error.value = err instanceof ApiError ? err.message : '读取电机参数失败，请重试'
   } finally {
     loading.value = false
@@ -102,7 +134,11 @@ async function load(): Promise<void> {
 }
 
 watch(visible, (open) => {
-  if (open) load()
+  if (open) {
+    load()
+  } else {
+    editVisible.value = false
+  }
 })
 watch(
   () => props.motorId,
@@ -162,13 +198,18 @@ watch(
         共 {{ filledCount }} 项有值。这是电机库里的<b>当前值</b>（不是入库时的快照），单位已按录入口径换算；
         「—」表示该型号这项没有值<template v-if="missingRows.length">，
         标「缺」的 {{ missingRows.length }} 项是必填但库里为空，这类型号在计算里会判为「信息不全」</template>。
+        识别错了的项不必重新识别样册：点下方「<b>编辑参数</b>」直接改，保存即写回电机库（同一台，不会新增）。
       </div>
     </div>
 
     <template #footer>
-      <el-button type="primary" @click="visible = false">关闭</el-button>
+      <el-button @click="visible = false">关闭</el-button>
+      <el-button type="primary" :disabled="!detail || loading" @click="openEdit">编辑参数</el-button>
     </template>
   </el-dialog>
+
+  <!-- 编辑：复用 M10 录入表单（C4 整体替换），保存后本页重读 -->
+  <MotorEntryDialog v-model="editVisible" :edit-motor-id="editMotorId" @saved="onEdited" />
 </template>
 
 <style scoped>

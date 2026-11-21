@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { createMotor, listMotors, updateMotor } from '@/api/motor'
+import { Loading } from '@element-plus/icons-vue'
+import { createMotor, getMotor, listMotors, updateMotor } from '@/api/motor'
 import { useMotorStore } from '@/stores/motor'
 import { useProjectStore } from '@/stores/project'
 import { ApiError } from '@/types/api'
-import type { MotorTypeCode } from '@/types/domain'
-import type { MotorPrefill, MotorUpsertRequest } from '@/types/motor'
+import type { EntryMethod, MotorTypeCode } from '@/types/domain'
+import type { MotorDetail, MotorPrefill, MotorUpsertRequest } from '@/types/motor'
 import type { FieldSpec, TypeTemplate } from '@/types/template'
 
 /**
@@ -19,10 +20,20 @@ import type { FieldSpec, TypeTemplate } from '@/types/template'
  *
  * <p>2026-11-19 增补：支持 `prefill`——样册入库结果里被跳过的电机，点「补全参数」直接在这里
  * 打开同一张表单，参数已按样册预填，补齐保存即写入电机库（来源记为「识别草稿」）。
+ *
+ * <p>2026-11-21 增补：支持 `editMotorId`——已入库的电机（样册入库结果里的「查看」→「编辑参数」）
+ * 用同一张表单改参数，保存走 C4（PUT），而不是再新增一条。三条与 C4 对齐的口径：
+ * ①类型不可改（改类型等于换规格表，服务端 MOTOR_TYPE_MISMATCH）；②中孔、录入方式、录入日期
+ * 沿用库里的值（表单里不提供这几项，不能因为「没给」就清空）；③「录入必填」项（直线/音圈的
+ * 线圈质量、力矩的转动惯量）**原本就缺**的放过——不逼用户为了改别的字段补历史数据。
  */
 const visible = defineModel<boolean>({ required: true })
 
-const props = defineProps<{ prefill?: MotorPrefill | null }>()
+const props = defineProps<{
+  prefill?: MotorPrefill | null
+  /** 非空 = 编辑模式：按 id 读库里的当前值回填，保存走 C4 整体替换。 */
+  editMotorId?: number | null
+}>()
 const emit = defineEmits<{
   (e: 'open-import'): void
   (e: 'saved', payload: { motorId: number; status: 'CREATED' | 'UPDATED' }): void
@@ -33,6 +44,8 @@ const project = useProjectStore()
 
 /** 是否由样册入库的「补全参数」打开：决定标题、来源信息与写库的 entryMethod。 */
 const fromImport = computed(() => !!props.prefill)
+/** 是否编辑库里已有的记录（C4）。 */
+const editing = computed(() => props.editMotorId != null)
 
 type Mode = 'channels' | 'manual'
 const mode = ref<Mode>('channels')
@@ -44,6 +57,8 @@ const configName = ref('')
 /** 结构类型：表单不再让用户选（样册也不给），恒按模板首项写入——DB 非空 + 模板枚举校验，必须带值提交。 */
 const structure = ref('')
 const cooling = ref('')
+/** 中孔：表单不提供（可空列），编辑时原样带回，避免「没给」被当成「清空」。 */
+const bore = ref<string | null>(null)
 /** 字段原始输入（录入单位）；只保留已填的 key，类型切换时天然只带走交集。 */
 const values = ref<Record<string, number | null>>({})
 const manufacturer = ref('')
@@ -51,6 +66,14 @@ const series = ref('')
 const sourceDoc = ref('手工录入')
 const sourcePage = ref('')
 const note = ref('')
+
+/** 编辑模式：库里原有的录入方式 / 录入日期（不在表单里，保存时原样写回）。 */
+const loadedEntryMethod = ref<EntryMethod>('手工录入')
+const loadedEnteredOn = ref<string | null>(null)
+/** 编辑模式：打开时库里已有值的字段（判断「录入必填」是否属于「原本就缺」）。 */
+const originalKeys = ref<Set<string>>(new Set())
+/** 编辑模式：正在读库里当前值。 */
+const loadingDetail = ref(false)
 
 /** 是否已点过一次保存（未报错前不打扰用户，报错后补填实时刷新缺项）。 */
 const dirty = ref(false)
@@ -80,10 +103,28 @@ const fieldGroups = computed(() => {
 
 const coolWord = computed(() => COOL_LABEL[cooling.value] || '自冷')
 
+/** 「录入必填」但不受「准入必填」管的两项（与 domain entryRequiredKeys 一致）。 */
+const entryRequiredKeys = computed(() =>
+  motorType.value === 'torque' ? ['inertia'] : ['moverMass'],
+)
+
+/**
+ * 必填而未填。
+ *
+ * <p>编辑老记录时，「录入必填」而库里本来就没有的项放过（与 C4 校验同一口径，见 MotorSpecValidator）——
+ * 否则用户只想改个冷却方式，也会被「缺线圈质量」挡住。
+ */
+function requiredMissing(field: FieldSpec): boolean {
+  if (!field.required || values.value[field.key] != null) return false
+  return !(
+    editing.value
+    && entryRequiredKeys.value.includes(field.key)
+    && !originalKeys.value.has(field.key)
+  )
+}
+
 const missingFields = computed(() =>
-  fieldGroups.value.flatMap((group) =>
-    group.fields.filter((field) => field.required && values.value[field.key] == null),
-  ),
+  fieldGroups.value.flatMap((group) => group.fields.filter(requiredMissing)),
 )
 const nameMissing = computed(() => modelName.value.trim() === '')
 const valid = computed(() => !nameMissing.value && missingFields.value.length === 0)
@@ -105,7 +146,7 @@ function labelOf(field: FieldSpec): string {
 }
 
 function isMissing(field: FieldSpec): boolean {
-  return dirty.value && field.required && values.value[field.key] == null
+  return dirty.value && requiredMissing(field)
 }
 
 // ---------------------------------------------------------------- 聚焦定位
@@ -164,6 +205,8 @@ function openManual(): void {
   motorType.value = project.axisKind === 'rotary' ? 'torque' : 'linear'
   modelName.value = ''
   values.value = {}
+  bore.value = null
+  originalKeys.value = new Set()
   manufacturer.value = ''
   series.value = ''
   sourceDoc.value = '手工录入'
@@ -178,10 +221,35 @@ function openManual(): void {
 }
 
 /**
+ * 规格（后端内部单位）→ 表单值（录入单位）。
+ *
+ * <p>只取模板里有的字段：详情接口的 spec 还带 `derived` 这类服务端派生项，塞进表单会被当成未知字段。
+ * 后端给的是**内部单位**（K2 factor 已乘过），表单显示录入单位，所以这里要除回去。
+ */
+function toFormValues(
+  type: MotorTypeCode,
+  spec: Record<string, number | string | null>,
+): Record<string, number | null> {
+  const filled: Record<string, number | null> = {}
+  const tpl = templates.value?.[type] ?? null
+  if (!tpl) return filled
+  for (const group of tpl.groups) {
+    for (const field of group.fields) {
+      const raw = spec[field.key]
+      if (raw == null) continue
+      const num = typeof raw === 'number' ? raw : Number(raw)
+      if (!Number.isFinite(num)) continue
+      const factor = field.factor ?? 1
+      filled[field.key] = factor === 1 ? num : num / factor
+    }
+  }
+  return filled
+}
+
+/**
  * 用样册入库结果预填表单。
  *
- * <p>后端给的是**内部单位**（K2 factor 已乘过），表单显示录入单位，所以这里要除回去；
- * 样册没认出来的字段保持空，正是用户要补的那几项。
+ * <p>样册没认出来的字段保持空，正是用户要补的那几项。
  */
 function applyPrefill(prefill: MotorPrefill): void {
   motorType.value = prefill.motorType
@@ -189,37 +257,81 @@ function applyPrefill(prefill: MotorPrefill): void {
   configName.value = prefill.configName || '默认'
   structure.value = prefill.structure || ''
   cooling.value = prefill.cooling || ''
+  bore.value = null
   manufacturer.value = ''
   series.value = ''
   sourceDoc.value = prefill.sourceDoc || '样册'
   sourcePage.value = ''
   note.value = prefill.note || ''
-
-  const filled: Record<string, number | null> = {}
-  const tpl = templates.value?.[prefill.motorType] ?? null
-  if (tpl) {
-    for (const group of tpl.groups) {
-      for (const field of group.fields) {
-        const raw = prefill.spec[field.key]
-        if (raw == null) continue
-        const num = typeof raw === 'number' ? raw : Number(raw)
-        if (!Number.isFinite(num)) continue
-        const factor = field.factor ?? 1
-        filled[field.key] = factor === 1 ? num : num / factor
-      }
-    }
-  }
-  values.value = filled
+  values.value = toFormValues(prefill.motorType, prefill.spec)
+  originalKeys.value = new Set()
   dirty.value = false
   serverError.value = ''
   mode.value = 'manual'
 }
 
+/**
+ * 编辑模式：把库里的**当前值**填进表单（全字段，含仅录入表单可见的 kth / tmax 等）。
+ *
+ * <p>录入方式、录入日期、中孔原样带回不显示在表单里——保存时原样写回，免得「表单没有」被当成「清空」。
+ */
+function applyDetail(detail: MotorDetail): void {
+  motorType.value = detail.motorType
+  modelName.value = detail.modelName
+  configName.value = detail.configName
+  structure.value = detail.structure
+  cooling.value = detail.cooling
+  bore.value = detail.bore ?? null
+  manufacturer.value = detail.manufacturer ?? ''
+  series.value = detail.series ?? ''
+  sourceDoc.value = detail.sourceDoc ?? ''
+  sourcePage.value = detail.sourcePage ?? ''
+  note.value = detail.note ?? ''
+  loadedEntryMethod.value = detail.entryMethod
+  loadedEnteredOn.value = detail.enteredOn
+  values.value = toFormValues(detail.motorType, detail.spec)
+  originalKeys.value = new Set(Object.keys(values.value))
+  dirty.value = false
+  serverError.value = ''
+  mode.value = 'manual'
+}
+
+/** 编辑模式打开：先读库（C2），数据回来再填，避免闪一下空表单。 */
+let editLoadSeq = 0
+async function loadForEdit(id: number): Promise<void> {
+  const seq = ++editLoadSeq
+  mode.value = 'manual'
+  loadingDetail.value = true
+  serverError.value = ''
+  try {
+    const detail = await getMotor(id)
+    if (seq !== editLoadSeq) return          // 连点两台时只留最后一次
+    applyDetail(detail)
+  } catch (error) {
+    if (seq !== editLoadSeq) return
+    serverError.value = error instanceof ApiError ? error.message : '读取电机参数失败，请重试'
+  } finally {
+    if (seq === editLoadSeq) loadingDetail.value = false
+  }
+}
+
 const filledCount = computed(() => Object.keys(values.value).length)
+
+/** 弹窗标题：编辑 / 样册补全 / 手工录入三态要能一眼分开。 */
+const dialogTitle = computed(() => {
+  if (mode.value !== 'manual') return '导入电机参数'
+  if (editing.value) return `编辑电机参数${modelName.value ? `：${modelName.value}` : ''}`
+  return fromImport.value ? '补全参数并入库' : '手工录入电机'
+})
 
 watch(visible, (open) => {
   if (!open) {
+    editLoadSeq += 1      // 关窗即作废在途的读取，避免数据回来后覆盖下次打开的表单
     mode.value = 'channels'
+    return
+  }
+  if (editing.value && props.editMotorId != null) {
+    loadForEdit(props.editMotorId)
     return
   }
   if (props.prefill) {
@@ -229,11 +341,17 @@ watch(visible, (open) => {
   }
 })
 
-// 同一个弹窗被复用时（先补全 A 再补全 B），prefill 变了要重新填
+// 同一个弹窗被复用时（先补全 A 再补全 B / 先看 A 再改 B），入参变了要重新填
 watch(
   () => props.prefill,
   (prefill) => {
     if (visible.value && prefill) applyPrefill(prefill)
+  },
+)
+watch(
+  () => props.editMotorId,
+  (id) => {
+    if (visible.value && id != null) loadForEdit(id)
   },
 )
 
@@ -270,23 +388,54 @@ async function handleSave(): Promise<void> {
 
   const config = configName.value.trim() || '默认'
   const fromSample = fromImport.value
+  const today = new Date().toISOString().slice(0, 10)
   const request: MotorUpsertRequest = {
     modelName: modelName.value.trim(),
     configName: config,
     motorType: motorType.value,
     structure: structure.value.trim() || tpl.structures[0] || '',
     cooling: cooling.value.trim() || tpl.coolings[0] || '',
-    // 中孔规格不在表单里选：可空列，不编造默认值（力矩的 标准/特殊 需要时在电机库中补）
-    bore: null,
+    // 中孔规格不在表单里选：新建不编造默认值（力矩的 标准/特殊 需要时在电机库中补）；
+    // 编辑时沿用库里的值——「表单没有这一项」不能当成「要清空」（C4 是整体替换）。
+    bore: editing.value ? bore.value : null,
     manufacturer: manufacturer.value.trim() || null,
     series: series.value.trim() || null,
     // 样册补全：来源文档就是那份 PDF，录入方式与批量入库一致（识别草稿）
     sourceDoc: fromSample ? (props.prefill?.sourceDoc ?? '样册') : sourceDoc.value.trim() || null,
     sourcePage: fromSample ? null : sourcePage.value.trim() || null,
-    entryMethod: fromSample ? '识别草稿' : '手工录入',
-    enteredOn: new Date().toISOString().slice(0, 10),
+    // 编辑已有记录：录入方式与录入日期属于「历史」，不在表单里，原样写回
+    entryMethod: fromSample ? '识别草稿' : editing.value ? loadedEntryMethod.value : '手工录入',
+    enteredOn: editing.value ? (loadedEnteredOn.value ?? today) : today,
     note: fromSample ? (props.prefill?.note ?? null) : note.value.trim() || null,
     spec,
+  }
+
+  // 编辑：直接 C4 整体替换这台电机（不新增记录，主键仍是「型号名 + 配置名」）
+  if (editing.value && props.editMotorId != null) {
+    saving.value = true
+    serverError.value = ''
+    try {
+      await updateMotor(props.editMotorId, request)
+      ElMessage.success(`已保存修改（${tpl.label} · ${request.modelName} / ${config}）`)
+      emit('saved', { motorId: props.editMotorId, status: 'UPDATED' })
+      visible.value = false
+    } catch (error) {
+      if (error instanceof ApiError) {
+        serverError.value =
+          error.code === 'MOTOR_DUPLICATE'
+            ? `「${request.modelName} / ${config}」已有另一台电机，请改用其他型号名或配置`
+            : formatServerMessage(error)
+        if (error.code === 'MOTOR_DUPLICATE') {
+          await nextTick()
+          nameInputRef.value?.focus()
+        }
+      } else {
+        serverError.value = '保存失败，请重试'
+      }
+    } finally {
+      saving.value = false
+    }
+    return
   }
 
   saving.value = true
@@ -343,7 +492,7 @@ function formatServerMessage(error: ApiError): string {
 <template>
   <el-dialog
     v-model="visible"
-    :title="mode === 'manual' ? (fromImport ? '补全参数并入库' : '手工录入电机') : '导入电机参数'"
+    :title="dialogTitle"
     :width="mode === 'manual' ? '760px' : '560px'"
     append-to-body
   >
@@ -367,8 +516,20 @@ function formatServerMessage(error: ApiError): string {
 
     <!-- 手工录入表单 -->
     <div v-else class="manual-form">
+      <div v-if="loadingDetail" class="entry-loading">
+        <el-icon class="is-loading"><loading /></el-icon>
+        <span>正在读取电机参数…</span>
+      </div>
+
+      <template v-else>
+      <!-- 编辑：说清「改的是哪台、存到哪去」，以及类型为什么不能改 -->
+      <div v-if="editing" class="prefill-tip">
+        正在修改电机库里的这台记录，参数已按库里的<b>当前值</b>填好 {{ filledCount }} 项；改完点「保存修改」即整体替换，
+        库里的其他方案不用重建（仍是同一条电机）。<br />
+        型号名 + 配置名是主键：改了它等于把这条记录改成另一台电机的名字；电机类型不可修改（改类型等于换规格表）。
+      </div>
       <!-- 样册补全：说清「哪些是预填的、空的就是缺的」，避免用户以为要重填一遍 -->
-      <div v-if="fromImport" class="prefill-tip">
+      <div v-else-if="fromImport" class="prefill-tip">
         {{ prefill?.modelName }} 的参数已按样册预填 <b>{{ filledCount }}</b> 项；带
         <span class="req-star">*</span> 的空项就是样册里没识别到的，补齐后保存即写入电机库
         （录入方式记为「识别草稿」）。
@@ -389,9 +550,11 @@ function formatServerMessage(error: ApiError): string {
       </div>
       <div class="entry-row">
         <label class="entry-label">电机类型</label>
+        <!-- 编辑时锁死：改类型等于换规格表，服务端 C4 会直接拒（MOTOR_TYPE_MISMATCH） -->
         <el-select
           :model-value="motorType"
           size="small"
+          :disabled="editing"
           @update:model-value="switchType($event as MotorTypeCode)"
         >
           <el-option
@@ -484,16 +647,28 @@ function formatServerMessage(error: ApiError): string {
       </div>
       <div class="entry-footnote">
         带 <span class="req-star">*</span> 为必填，缺项无法入库；其余可留空（留空的项该型号判为「信息不全、无法判定」）。
-        结构类型不在表单里选，按模板默认写入（直线 无铁芯 / 力矩 有铁芯 / 音圈 音圈）；中孔规格也不在表单里填
-        （留空，需要时在电机库中补）。录入方式：手工录入 · 录入日期：{{ new Date().toISOString().slice(0, 10) }}
+        <template v-if="editing">
+          结构类型不在表单里改（沿用本机现有的「{{ structure || '—' }}」，可让样册重新入库覆盖）；
+          中孔规格沿用原值。录入方式：{{ loadedEntryMethod }} · 录入日期：{{ loadedEnteredOn || '—' }}
+        </template>
+        <template v-else>
+          结构类型不在表单里选，按模板默认写入（直线 无铁芯 / 力矩 有铁芯 / 音圈 音圈）；中孔规格也不在表单里填
+          （留空，需要时在电机库中补）。录入方式：手工录入 · 录入日期：{{ new Date().toISOString().slice(0, 10) }}
+        </template>
       </div>
+      </template>
     </div>
 
     <template #footer>
       <template v-if="mode === 'manual'">
         <el-button @click="visible = false">取消</el-button>
-        <el-button type="primary" :loading="saving" :disabled="saveDisabled" @click="handleSave">
-          {{ fromImport ? '保存并入库' : '保存入库' }}
+        <el-button
+          type="primary"
+          :loading="saving"
+          :disabled="saveDisabled || loadingDetail"
+          @click="handleSave"
+        >
+          {{ editing ? '保存修改' : fromImport ? '保存并入库' : '保存入库' }}
         </el-button>
       </template>
       <el-button v-else type="primary" @click="visible = false">关闭</el-button>
@@ -533,6 +708,16 @@ function formatServerMessage(error: ApiError): string {
 .manual-form {
   max-height: 62vh;
   overflow: auto;
+}
+
+/* 编辑模式读库里当前值时的占位（时长通常 <100ms，仅避免闪空表单） */
+.entry-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 28px 4px;
+  color: var(--ms-text-secondary);
+  font-size: 13px;
 }
 
 /* 统一三段行：标签 170px | 输入 1fr | 单位 80px（放得下 Vpeak/(m/s)、N/SqRt(W) 这类长单位） */
