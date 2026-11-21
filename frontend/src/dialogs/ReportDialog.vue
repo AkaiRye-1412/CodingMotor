@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { ElMessage } from 'element-plus'
-import { exportReportPdf } from '@/api/report'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { exportReportPdf, exportReportToChosenPath } from '@/api/report'
 import { useMotorStore } from '@/stores/motor'
 import { usePlanStore } from '@/stores/plan'
 import { useProjectStore } from '@/stores/project'
@@ -13,6 +13,10 @@ import { positiveOrNull } from '@/utils/format'
 /**
  * M11：报告导出弹窗。
  * 工程数据为会话级，服务端无法自行获取方案列表，因此由前端完整提交当前页签全部方案。
+ *
+ * <p>保存路径（第 91 轮）：走 `/reports/pdf/save`，由本地后端弹系统「另存为」对话框，
+ * 用户可以自己选电脑上的任意目录；后端无图形环境时返回 `REPORT_SAVE_UNAVAILABLE`，
+ * 这里自动回退到浏览器下载，保证任何环境都能导出。
  */
 const visible = defineModel<boolean>({ required: true })
 
@@ -49,6 +53,7 @@ function buildRequest(): ReportRequest {
       planNo: index + 1,
       shape: setting.mode === 'pointToPoint' ? setting.shape : undefined,
       selectedMotorId: motorStore.selectedMotorId,
+      direction: plan.direction,
       plan: {
         load: plan.load ?? 0,
         // 与界面同一口径：报告的「总移动质量/负载惯量」= 负载 + 电机自身质量/惯量（CAL-26）
@@ -75,19 +80,44 @@ function safeFilename(): string {
   return name.replace(/[\\/:*?"<>|]/g, '_')
 }
 
+/** 回退路径：后端弹不出对话框时，仍按原来的浏览器下载交付。 */
+async function downloadInBrowser(): Promise<void> {
+  const blob = await exportReportPdf(buildRequest())
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = safeFilename()
+  anchor.click()
+  URL.revokeObjectURL(url)
+  ElMessage.success('系统对话框不可用，已改为浏览器下载')
+  visible.value = false
+}
+
 async function handleExport(): Promise<void> {
   exporting.value = true
   try {
-    const blob = await exportReportPdf(buildRequest())
-    const url = URL.createObjectURL(blob)
-    const anchor = document.createElement('a')
-    anchor.href = url
-    anchor.download = safeFilename()
-    anchor.click()
-    URL.revokeObjectURL(url)
-    ElMessage.success('报告已导出')
+    const result = await exportReportToChosenPath(buildRequest())
+    if (!result.saved) {
+      // 用户在「另存为」里点了取消：不算失败，保持弹窗让用户可以重来
+      ElMessage.info('已取消保存')
+      return
+    }
     visible.value = false
+    await ElMessageBox.alert(`报告已保存到：${result.path}`, '导出完成', {
+      confirmButtonText: '知道了',
+      type: 'success',
+    })
   } catch (error) {
+    if (error instanceof ApiError && error.code === 'REPORT_SAVE_UNAVAILABLE') {
+      try {
+        await downloadInBrowser()
+      } catch (fallbackError) {
+        const message =
+          fallbackError instanceof ApiError ? fallbackError.message : '报告导出失败，请重试'
+        ElMessage.error(message)
+      }
+      return
+    }
     const message = error instanceof ApiError ? error.message : '报告导出失败，请重试'
     ElMessage.error(message)
   } finally {
@@ -97,8 +127,8 @@ async function handleExport(): Promise<void> {
 </script>
 
 <template>
-  <el-dialog v-model="visible" title="导出报告" width="560px" append-to-body>
-    <el-form label-width="80px" label-position="left">
+  <el-dialog v-model="visible" title="导出报告" width="580px" append-to-body>
+    <el-form label-width="82px" label-position="left">
       <el-form-item label="客户名">
         <el-input v-model="customerName" maxlength="100" placeholder="可选" />
       </el-form-item>
@@ -114,13 +144,9 @@ async function handleExport(): Promise<void> {
       </el-form-item>
     </el-form>
 
-    <el-alert
-      type="info"
-      :closable="false"
-      show-icon
-      :title="`将导出当前页签下全部 ${currentPlans.length} 条方案`"
-      description="每个方案按「理论计算结果 · 工况输入 · 运动曲线 · 选入电机数据」成页，只包含选入的电机（不含推荐清单）；无法计算的方案仍会列出并标注原因。"
-    />
+    <div v-if="exporting" class="saving-hint">
+      正在等待保存位置：请到系统弹出的「另存为」对话框里选择目录并点「保存」（默认已填好文件名，可直接改路径）。
+    </div>
 
     <template #footer>
       <el-button @click="visible = false">取消</el-button>
@@ -130,3 +156,16 @@ async function handleExport(): Promise<void> {
     </template>
   </el-dialog>
 </template>
+
+<style scoped>
+/* 导出时系统对话框可能被浏览器挡在后面，给一句明确指引，避免以为「点了没反应」 */
+.saving-hint {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-left: 3px solid var(--ms-accent);
+  background: #f5f9ff;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ms-text-secondary);
+}
+</style>

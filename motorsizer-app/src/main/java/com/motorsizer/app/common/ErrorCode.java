@@ -17,6 +17,9 @@ public enum ErrorCode {
 
     REPORT_NO_PLAN(HttpStatus.BAD_REQUEST, "提交的方案数为 0"),
     REPORT_ALL_UNCOMPUTABLE(HttpStatus.BAD_REQUEST, "全部方案都无法计算"),
+    /** 无图形环境时无法弹出「另存为」对话框，前端回退到浏览器下载。 */
+    REPORT_SAVE_UNAVAILABLE(HttpStatus.NOT_IMPLEMENTED, "当前运行环境不支持弹出保存对话框"),
+    REPORT_SAVE_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "报告写入失败"),
 
     IMPORT_JOB_NOT_FOUND(HttpStatus.NOT_FOUND, "导入任务不存在或已清理"),
     IMPORT_FILE_REJECTED(HttpStatus.BAD_REQUEST, "请上传一个可读取的 PDF 文件"),

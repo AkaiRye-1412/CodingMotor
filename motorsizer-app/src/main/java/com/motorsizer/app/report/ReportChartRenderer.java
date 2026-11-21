@@ -31,7 +31,12 @@ public final class ReportChartRenderer {
 
     /** 逻辑画布（再按 {@link #SCALE} 放大两倍，避免 PDF 里发虚）。 */
     private static final int WIDTH = 720;
-    private static final int HEIGHT = 152;
+    /**
+     * 高度 144（= 宽 720 / 5）与报告版式里的 180×36mm 严格同比例：
+     * 之前 152 配 38mm 时，两张曲线加上工况表会把计算页顶到临界，
+     * 一旦溢出就被整块推到下一页，凭空多出一页只画两条曲线。
+     */
+    private static final int HEIGHT = 144;
     private static final double SCALE = 2.0;
 
     private static final Color PLOT_BG = new Color(0xFB, 0xFC, 0xFE);
@@ -43,9 +48,11 @@ public final class ReportChartRenderer {
     private static final Color PEAK = new Color(0x9A, 0xA5, 0xB4);
 
     private static final int PAD_LEFT = 40;
-    private static final int PAD_RIGHT = 14;
+    /** 右侧 20：x 轴最后一个刻度（时间终点）以居中方式画在右边界上，留窄了会露出图框外。 */
+    private static final int PAD_RIGHT = 20;
     private static final int PAD_TOP = 18;
-    private static final int PAD_BOTTOM = 24;
+    /** 底部 16：x 轴刻度画在 bottom+13，仍留 3px 余量（原 24 是画布 152 时代的空白）。 */
+    private static final int PAD_BOTTOM = 16;
 
     private ReportChartRenderer() {
     }

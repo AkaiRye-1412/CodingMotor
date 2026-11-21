@@ -13,6 +13,7 @@ import com.motorsizer.app.mapper.MotorMapper;
 import com.motorsizer.app.mapper.MotorTorqueSpecMapper;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.text.PDFTextStripper;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -22,6 +23,7 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
+import java.awt.GraphicsEnvironment;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -93,14 +95,22 @@ class ReportApiTest {
         String text = extractText(pdf);
         assertThat(text).contains("电机选型报告");
         assertThat(text).contains("测试项目");
+        // 第 91 轮：按界面模块补齐 —— 计算设置条、方向行、供电两卡、选型结果
+        assertThat(text).contains("运动模式");
+        assertThat(text).contains("运动形状");
+        assertThat(text).contains("安全余量");
         assertThat(text).contains("理论计算结果");
         assertThat(text).contains("工况输入");
+        assertThat(text).contains("方向");
         assertThat(text).contains("运动曲线");
-        assertThat(text).contains("选入电机");
+        assertThat(text).contains("选型结果");
         assertThat(text).contains("电机实际应用值");
+        assertThat(text).contains("选入电机数据");
+        assertThat(text).contains("供电电压");
+        assertThat(text).contains("供电余量");
     }
 
-    /** 第 69 轮：报告只导出选入电机，不再全量导出推荐清单。 */
+    /** 第 98 轮：报告只讲选入的那台电机，不再附「推荐电机」清单（用户明确要求取消）。 */
     @Test
     void reportContainsSelectedMotorOnly() throws Exception {
         Long selected = seedLinear("REPORT-L1");
@@ -116,6 +126,22 @@ class ReportApiTest {
         assertThat(text).contains("REPORT-L1");
         assertThat(text).doesNotContain("REPORT-L2");
         assertThat(text).doesNotContain("推荐清单");
+        assertThat(text).doesNotContain("已选入");
+    }
+
+    /**
+     * 「另存为」在 headless 环境里不能弹对话框，必须返回可识别的错误码让前端回退下载。
+     *
+     * <p>有图形环境时该用例会真的弹窗并卡住，所以只在 headless 下跑（单测 JVM 恒为 headless）。
+     */
+    @Test
+    void saveReportWithoutDisplayFallsBackToDownload() throws Exception {
+        Assumptions.assumeTrue(GraphicsEnvironment.isHeadless(),
+                "当前有图形环境，「另存为」会弹对话框，跳过该用例");
+        Long motorId = seedLinear("REPORT-L1");
+
+        JsonNode root = export("/api/reports/pdf/save", reportRequest(validPlan(motorId)), 501);
+        assertThat(root.path("code").asText()).isEqualTo("REPORT_SAVE_UNAVAILABLE");
     }
 
     @Test
@@ -199,6 +225,8 @@ class ReportApiTest {
         item.put("plan", plan);
         item.put("shape", "trapezoid");
         item.put("selectedMotorId", motorId);
+        // 界面 M4 的「方向（上/下）」单选，只影响报告展示，不参与计算
+        item.put("direction", "up");
         return item;
     }
 
@@ -214,7 +242,11 @@ class ReportApiTest {
     }
 
     private JsonNode export(Map<String, Object> body, int expectedStatus) throws Exception {
-        MvcResult result = mockMvc.perform(post("/api/reports/pdf")
+        return export("/api/reports/pdf", body, expectedStatus);
+    }
+
+    private JsonNode export(String url, Map<String, Object> body, int expectedStatus) throws Exception {
+        MvcResult result = mockMvc.perform(post(url)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(body)))
                 .andExpect(status().is(expectedStatus))

@@ -7,7 +7,7 @@
         /* ---------------------------------------------------------------- 页面 */
         @page {
             size: A4;
-            margin: 17mm 15mm 15mm 15mm;
+            margin: 16mm 15mm 14mm 15mm;
             @bottom-left {
                 content: "MotorSizer · 电机选型报告";
                 font-family: "Noto Sans SC", sans-serif;
@@ -26,7 +26,7 @@
             font-family: "Noto Sans SC", "Microsoft YaHei", sans-serif;
             font-size: 9pt;
             color: #33415c;
-            line-height: 1.5;
+            line-height: 1.45;
             margin: 0;
         }
 
@@ -181,12 +181,12 @@
         }
 
         table.plan-head td {
-            padding: 0 0 2.5mm 0;
+            padding: 0 0 2.2mm 0;
             vertical-align: bottom;
         }
 
         .plan-no {
-            font-size: 17pt;
+            font-size: 16pt;
             font-weight: 700;
             color: #1b2436;
             letter-spacing: 0.4pt;
@@ -208,9 +208,42 @@
             color: #1d4ed8;
         }
 
+        /* ---------------------------------------------------------------- 计算设置条 */
+        /*
+         * 对应界面左列「运动模式」+ 中列「安全余量」两块。
+         * 用 table + 25% 列宽（openhtmltopdf 不支持 flex），一行读完，不占版面。
+         */
+        table.settings {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 2mm 0;
+            margin: 2mm 0 0.5mm 0;
+            page-break-inside: avoid;
+        }
+
+        table.settings td.setting {
+            width: 25%;
+            border: 0.3mm solid #e3e9f2;
+            background-color: #f8fafd;
+            padding: 1.2mm 2.4mm;
+            vertical-align: middle;
+        }
+
+        .setting-label {
+            font-size: 7pt;
+            color: #7c8899;
+        }
+
+        .setting-value {
+            margin-top: 0.4mm;
+            font-size: 8.5pt;
+            font-weight: 700;
+            color: #22304a;
+        }
+
         .section {
-            margin: 3.6mm 0 2mm 0;
-            font-size: 11pt;
+            margin: 3mm 0 1.6mm 0;
+            font-size: 10.5pt;
             font-weight: 700;
             color: #1b2436;
             page-break-after: avoid;
@@ -219,7 +252,7 @@
         .section-bar {
             display: inline-block;
             width: 1.1mm;
-            height: 3.6mm;
+            height: 3.4mm;
             background-color: #1d4ed8;
             margin-right: 2mm;
             vertical-align: -0.3mm;
@@ -243,7 +276,7 @@
             width: 33.33%;
             border: 0.3mm solid #e3e9f2;
             background-color: #f8fafd;
-            padding: 2.6mm 3mm 3mm 3mm;
+            padding: 2mm 2.8mm 2.4mm 2.8mm;
             vertical-align: top;
         }
 
@@ -253,13 +286,13 @@
         }
 
         .metric-label {
-            font-size: 7.5pt;
+            font-size: 7pt;
             color: #7c8899;
         }
 
         .metric-value {
-            margin-top: 1mm;
-            font-size: 15pt;
+            margin-top: 0.8mm;
+            font-size: 13.5pt;
             font-weight: 700;
             color: #1b2436;
         }
@@ -268,8 +301,18 @@
             color: #1d4ed8;
         }
 
+        /* 安全余量为负 = 需求已超能力，用红色与正常值区分开 */
+        table.metrics td.metric-bad {
+            background-color: #fdecea;
+            border-color: #e3b6b0;
+        }
+
+        .metric-bad .metric-value {
+            color: #b42318;
+        }
+
         .metric-unit {
-            font-size: 8pt;
+            font-size: 7.5pt;
             font-weight: 400;
             color: #7c8899;
             margin-left: 1.4mm;
@@ -285,16 +328,16 @@
         table.grid th {
             background-color: #eef2f8;
             color: #45536b;
-            font-size: 8pt;
+            font-size: 7.5pt;
             font-weight: 700;
             text-align: left;
-            padding: 1.8mm 2.4mm;
+            padding: 1.5mm 2.4mm;
             border-bottom: 0.4mm solid #d8e0ec;
         }
 
         table.grid td {
-            padding: 1.2mm 2.4mm;
-            font-size: 9pt;
+            padding: 1.05mm 2.4mm;
+            font-size: 8.5pt;
             border-bottom: 0.3mm solid #edf1f7;
             vertical-align: middle;
         }
@@ -331,25 +374,25 @@
         /* ---------------------------------------------------------------- 曲线 */
         .chart {
             page-break-inside: avoid;
-            margin-bottom: 2mm;
+            margin-bottom: 1.5mm;
         }
 
         /*
-         * 必须写死宽高：只给 width:100% 时 openhtmltopdf 会先按图片固有像素（1440×380px ≈ 381×100mm）
-         * 估算高度，导致 page-break-inside:avoid 误判「放不下」而把整块曲线推到下一页。
-         * 180 × 38mm 与画布 720×152 同比例，不会变形。
+         * 必须写死宽高：只给 width:100% 时 openhtmltopdf 会先按图片固有像素（1440×288px）估算高度，
+         * 导致 page-break-inside:avoid 误判「放不下」而把整块曲线推到下一页。
+         * 180 × 36mm 与画布 720×144 严格同比例（5.0），不会变形。
          */
         .chart img {
-            width: 180mm;
-            height: 38mm;
+            width: 100%;
+            height: 36mm;
             display: block;
             border: 0.3mm solid #e3e9f2;
         }
 
         .chart-caption {
-            margin-top: 1.2mm;
+            margin-top: 1mm;
             text-align: center;
-            font-size: 7.5pt;
+            font-size: 7pt;
             color: #8b97ab;
         }
 
@@ -387,11 +430,11 @@
 
         /* 选型页只有两列数据，行距放宽一点更好读 */
         table.cols table.grid td {
-            padding: 1.9mm 2.4mm;
+            padding: 1.5mm 2.4mm;
         }
 
         table.cols table.grid th {
-            padding: 2mm 2.4mm;
+            padding: 1.7mm 2.4mm;
         }
 
         .col-title {
@@ -399,15 +442,15 @@
             font-weight: 700;
             color: #45536b;
             border-bottom: 0.3mm solid #d8e0ec;
-            padding-bottom: 1.4mm;
-            margin-bottom: 2mm;
+            padding-bottom: 1.2mm;
+            margin-bottom: 1.6mm;
         }
 
         .verdict {
             font-size: 9pt;
             font-weight: 700;
-            padding: 1.6mm 2.4mm;
-            margin-bottom: 2mm;
+            padding: 1.4mm 2.4mm;
+            margin-bottom: 1.6mm;
         }
 
         .verdict.pass {
@@ -436,25 +479,59 @@
             margin-top: 1mm;
         }
 
-        .supply {
+        /* 供电两张卡：对应界面 M8 底部「供电电压 / 供电余量」一左一右 */
+        table.supply-cards {
+            width: 100%;
+            border-collapse: collapse;
             margin-top: 2mm;
-            font-size: 8pt;
-            color: #4b5a72;
         }
 
-        .supply-ok {
+        table.supply-cards td.supply-card {
+            width: 50%;
+            border: 0.3mm solid #e3e9f2;
+            background-color: #fafbfc;
+            padding: 1.6mm 2.4mm;
+            vertical-align: middle;
+        }
+
+        .supply-label {
+            font-size: 7.5pt;
+            color: #7c8899;
+            margin-right: 2mm;
+        }
+
+        .supply-value {
+            font-size: 11pt;
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .supply-value.ok {
             color: #0f7b4d;
         }
 
-        .supply-bad {
+        .supply-value.bad {
             color: #b42318;
+        }
+
+        .supply-unit {
+            font-size: 7.5pt;
+            font-weight: 700;
+            color: #7c8899;
+            margin-left: 1mm;
+        }
+
+        .supply {
+            margin-top: 1.6mm;
+            font-size: 7.5pt;
+            color: #8b97ab;
         }
 
         .model-line {
             font-size: 10pt;
             font-weight: 700;
             color: #1b2436;
-            margin-bottom: 2mm;
+            margin-bottom: 1.6mm;
         }
 
         .tag {
@@ -517,9 +594,9 @@
         }
 
         ul.notes li {
-            font-size: 8pt;
+            font-size: 7.5pt;
             color: #6b7a90;
-            line-height: 1.9;
+            line-height: 1.85;
         }
 
     </style>
@@ -593,8 +670,8 @@
     </div>
 
     <div class="cover-note">
-        本报告由 MotorSizer 依据录入工况自动生成：计算口径与软件界面一致，电机参数取自电机库记录；
-        每个方案只包含最终选入的电机，不含候选清单。
+        本报告由 MotorSizer 依据录入工况自动生成：计算口径与软件界面一致，电机参数取自电机库记录。
+        每个方案按「计算设置 · 理论计算结果 · 工况输入 · 运动曲线 · 选型结果」成页，与界面各模块一一对应。
     </div>
 </div>
 
@@ -606,6 +683,16 @@
             <td class="plan-model">
                 <span class="plan-model-label" th:if="${plan.ok}">选入电机</span>
                 <span class="plan-model-value" th:if="${plan.ok}" th:text="${plan.modelLabel}">型号</span>
+            </td>
+        </tr>
+    </table>
+
+    <!-- 计算设置：界面左列「运动模式」+ 中列「安全余量」 -->
+    <table class="settings" th:if="${!#lists.isEmpty(plan.settingChips)}">
+        <tr>
+            <td class="setting" th:each="chip : ${plan.settingChips}">
+                <div class="setting-label" th:text="${chip.label}">运动模式</div>
+                <div class="setting-value" th:text="${chip.value}">点到点</div>
             </td>
         </tr>
     </table>
@@ -649,7 +736,7 @@
             <tr th:each="chunk : ${plan.metricRows}">
                 <td class="metric"
                     th:each="metric : ${chunk}"
-                    th:classappend="${metric.emphasis} ? ' metric-em'">
+                    th:classappend="${metric.danger ? ' metric-bad' : (metric.emphasis ? ' metric-em' : '')}">
                     <div class="metric-label" th:text="${metric.label}">指标</div>
                     <div class="metric-value">
                         <span th:text="${metric.value}">—</span>
@@ -707,8 +794,8 @@
             </div>
         </div>
 
-        <!-- 选入电机 -->
-        <div class="section section-motor"><span class="section-bar"></span>选入电机</div>
+        <!-- 选入电机：界面中列「电机实际应用值」+ 右列「选入电机数据」 -->
+        <div class="section section-motor"><span class="section-bar"></span>选型结果</div>
         <div th:if="${plan.selected == null}" class="note-muted">
             该方案未选取电机。在软件中选择电机后可导出含应用值的报告。
         </div>
@@ -737,8 +824,24 @@
                         </tr>
                         </tbody>
                     </table>
-                    <div class="supply" th:if="${plan.supplyText != ''}"
-                         th:classappend="${plan.supplyOk} ? ' supply-ok'"
+
+                    <table class="supply-cards" th:if="${plan.supplyHaveText != null}">
+                        <tr>
+                            <td class="supply-card">
+                                <span class="supply-label">供电电压</span>
+                                <span class="supply-value" th:classappend="${plan.supplyOk} ? ' ok' : ' bad'">
+                                    <span th:text="${plan.supplyHaveText}">310</span><span class="supply-unit">VDC</span>
+                                </span>
+                            </td>
+                            <td class="supply-card">
+                                <span class="supply-label">供电余量</span>
+                                <span class="supply-value" th:classappend="${plan.supplyOk} ? ' ok' : ' bad'">
+                                    <span th:text="${plan.supplyRemainText}">295.1</span><span class="supply-unit">VDC</span>
+                                </span>
+                            </td>
+                        </tr>
+                    </table>
+                    <div class="supply" th:if="${plan.supplyHaveText == null and plan.supplyText != ''}"
                          th:text="${plan.supplyText}"></div>
                 </td>
                 <td class="col-gap"></td>
@@ -779,6 +882,7 @@
             <li>应用值按电机库参数与本次工况推导，线圈温度为热平衡估算值。</li>
             <li>供电判定取「供电母线 ≥ 所需电压」；未填写供电母线时不做判定。</li>
             <li>运动曲线由与软件界面同一份采样数据重绘，阶段分界为加速 / 匀速 / 减速切换点。</li>
+            <li>「方向（上/下）」仅用于快捷设定倾斜角度，不单独参与计算。</li>
             <li>电机参数取自电机库记录，如与最新样册不一致，请以样册为准。</li>
         </ul>
     </div>

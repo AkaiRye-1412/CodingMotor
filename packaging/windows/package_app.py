@@ -18,7 +18,18 @@ LOADER = os.path.join(PKG, "loader")
 LOADER_LIB = os.path.join(LOADER, "lib")
 ICONS = os.path.join(PKG, "icons")
 
-JAVA_HOME = os.environ.get("JAVA_HOME") or r"D:\develop\jdk-17"
+def _detect_java_home():
+    """JAVA_HOME 探测：环境变量 → 本机常见安装位置（D:\\develop 已废弃，保留兜底）。"""
+    env = os.environ.get("JAVA_HOME")
+    if env and os.path.exists(os.path.join(env, "bin", "jpackage.exe")):
+        return env
+    for candidate in (r"D:\Java\amazon-corretto-17", r"D:\develop\jdk-17"):
+        if os.path.exists(os.path.join(candidate, "bin", "jpackage.exe")):
+            return candidate
+    return env or r"D:\Java\amazon-corretto-17"
+
+
+JAVA_HOME = _detect_java_home()
 JAR = os.path.join(ROOT, "motorsizer-app", "target", "motorsizer-app-1.0.0-SNAPSHOT.jar")
 APP_INPUT = os.path.join(PKG, "app-input")
 RUNTIME = os.path.join(PKG, "jre")
@@ -116,7 +127,7 @@ run([os.path.join(JAVA_HOME, "bin", "jpackage.exe"),
      "--runtime-image", RUNTIME,
      "--icon", ico,
      "--dest", DIST,
-     "--app-version", "1.0.0",
+     "--app-version", "1.1.0",
      "--vendor", "Akribis",
      "--java-options", "-Dfile.encoding=UTF-8",
      "--java-options", "-Dsun.stdout.encoding=UTF-8",

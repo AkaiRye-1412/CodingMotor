@@ -21,6 +21,7 @@ Thumbs.db
 *.trace.db
 
 # 打包构建产物（packaging/windows）
+packaging/windows/archive/
 packaging/windows/jre/
 packaging/windows/dist/
 packaging/windows/app-input/

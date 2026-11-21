@@ -7,6 +7,9 @@ REM 环境：JAVA_HOME 指向 JDK 17 含 jmods
 set PKG=%~dp0
 
 if not exist "%JAVA_HOME%\bin\jpackage.exe" (
+  if exist D:\Java\amazon-corretto-17\bin\jpackage.exe set JAVA_HOME=D:\Java\amazon-corretto-17
+)
+if not exist "%JAVA_HOME%\bin\jpackage.exe" (
   if exist D:\develop\jdk-17\bin\jpackage.exe set JAVA_HOME=D:\develop\jdk-17
 )
 if not exist "%JAVA_HOME%\bin\jpackage.exe" (

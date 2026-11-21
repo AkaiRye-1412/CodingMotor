@@ -31,7 +31,12 @@ public class MotorsizerApplication {
         // 8080 空闲则固定使用（dev 友好）；被占用则交由系统分配随机空闲端口（AR-11）
         System.setProperty("server.port", String.valueOf(pickPort()));
 
-        SpringApplication.run(MotorsizerApplication.class, args);
+        // 报告「另存为」要弹 AWT 原生对话框，而 Spring Boot 默认把 java.awt.headless 置为 true，
+        // 会让 FileDialog 抛 HeadlessException。只在正式启动进程里关掉它：测试走 @SpringBootTest，
+        // 不经过 main，仍保持 headless —— 所以保存接口在单测里只会返回 REPORT_SAVE_UNAVAILABLE，不会弹窗卡住。
+        SpringApplication application = new SpringApplication(MotorsizerApplication.class);
+        application.setHeadless(false);
+        application.run(args);
     }
 
     private static int pickPort() {

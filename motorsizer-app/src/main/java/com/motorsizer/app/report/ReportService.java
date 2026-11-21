@@ -25,6 +25,7 @@ import java.util.Set;
  *
  * <p>报告与屏幕同源：不重新实现任何计算，曲线按同一份 sampling 数据在服务端重绘。
  * 内容口径与界面一致（第 69 轮）：只导出「选入电机」，不再列出全部推荐电机。
+ * 第 91 轮按界面模块补齐：每方案加「计算设置」条、工况输入补「方向」行、供电结论改两张卡。
  */
 @Service
 public class ReportService {
@@ -52,8 +53,29 @@ public class ReportService {
         Context context = new Context();
         context.setVariable("report", model);
         String html = templateEngine.process("report", context);
-        String filename = filename(request.projectName(), request.axisName());
+        String filename = suggestedFilename(request);
         return new ReportPdf(pdfRenderer.render(html), filename);
+    }
+
+    /**
+     * 「另存为」对话框的预填文件名。
+     *
+     * <p>它在用户选路径之前调用（先选路径再生成 PDF），此时请求还没过校验，
+     * 所以这里只做容错取字段，绝不抛校验错误。
+     */
+    public String suggestedFilename(ReportRequest request) {
+        String project = request == null ? null : trimToNull(request.projectName());
+        String axis = request == null ? null : trimToNull(request.axisName());
+        if (project == null && axis == null) {
+            return "电机选型报告.pdf";
+        }
+        if (axis == null) {
+            return sanitizeFilename(project) + "-电机选型报告.pdf";
+        }
+        if (project == null) {
+            return sanitizeFilename(axis) + "-电机选型报告.pdf";
+        }
+        return filename(project, axis);
     }
 
     // ---------------------------------------------------------------- 校验
@@ -112,6 +134,10 @@ public class ReportService {
             } else if (!planNos.add(planNo)) {
                 errors.add(new FieldError("plans[" + index + "].planNo", "方案序号不能重复"));
             }
+            String direction = item.direction();
+            if (direction != null && !"up".equals(direction) && !"down".equals(direction)) {
+                errors.add(new FieldError("plans[" + index + "].direction", "方向只能为 up / down"));
+            }
         }
 
         if (!errors.isEmpty()) {
@@ -124,15 +150,19 @@ public class ReportService {
     private ReportModel buildModel(ReportRequest request) {
         AxisKind axis = AxisKind.fromCode(request.axisKind());
         ReportRequest.Settings settings = request.settings();
+        boolean pointToPoint = "pointToPoint".equals(settings.mode());
         List<ReportModel.ReportPlanModel> plans = new ArrayList<>();
         boolean anyComputable = false;
 
         for (int index = 0; index < request.plans().size(); index++) {
             ReportRequest.PlanItem item = request.plans().get(index);
             int planNo = item.planNo() == null ? index + 1 : item.planNo();
+            List<ReportModel.ReportChip> chips =
+                    settingChips(pointToPoint, item.shape(), settings);
 
             if (item.plan() == null) {
-                plans.add(errorPlan(planNo, "方案输入为空", null, false, null));
+                plans.add(errorPlan(planNo, "方案输入为空", null, pointToPoint, null,
+                        item.direction(), chips));
                 continue;
             }
 
@@ -151,15 +181,15 @@ public class ReportService {
                 if (response.stage() == null || !response.stage().ok()) {
                     plans.add(errorPlan(planNo,
                             response.stage() == null ? "无法计算" : response.stage().message(),
-                            axis, "pointToPoint".equals(settings.mode()), item.plan()));
+                            axis, pointToPoint, item.plan(), item.direction(), chips));
                     continue;
                 }
-                plans.add(successPlan(planNo, axis, "pointToPoint".equals(settings.mode()),
-                        item.plan(), response));
+                plans.add(successPlan(planNo, axis, pointToPoint, item.plan(), item.direction(),
+                        response, chips));
                 anyComputable = true;
             } catch (BusinessException ex) {
                 plans.add(errorPlan(planNo, businessMessage(ex),
-                        axis, "pointToPoint".equals(settings.mode()), item.plan()));
+                        axis, pointToPoint, item.plan(), item.direction(), chips));
             }
         }
 
@@ -188,7 +218,9 @@ public class ReportService {
             AxisKind axis,
             boolean pointToPoint,
             CalculationRequest.Plan plan,
-            CalculationResponse response) {
+            String direction,
+            CalculationResponse response,
+            List<ReportModel.ReportChip> chips) {
 
         CalculationResponse.Curve curve = response.curve();
         CalculationResponse.Units units = response.units();
@@ -197,7 +229,8 @@ public class ReportService {
                 : response.selectedMotor().applied();
 
         List<List<ReportModel.ReportMetric>> metrics = metricRows(response, applied);
-        List<ReportModel.ReportPairRow> inputs = inputRows(axis, pointToPoint, plan, curve, true);
+        List<ReportModel.ReportPairRow> inputs =
+                inputRows(axis, pointToPoint, plan, direction, curve, true);
 
         ReportModel.SelectedView selectedView = null;
         if (response.selectedMotor() != null) {
@@ -215,6 +248,13 @@ public class ReportService {
                 : "";
         boolean supplyOk = applied != null && applied.supply() != null
                 && Boolean.TRUE.equals(applied.supply().pass());
+        // 供电两张卡（与界面 M8 的「供电电压 / 供电余量」同口径），无供电母线时不下发
+        String supplyHaveText = applied == null || applied.supply() == null
+                ? null
+                : fmt(applied.supply().have(), 1);
+        String supplyRemainText = applied == null || applied.supply() == null
+                ? null
+                : fmt(applied.supply().remain(), 1);
 
         String speedChart = null;
         String forceChart = null;
@@ -234,6 +274,7 @@ public class ReportService {
                 modelLabel,
                 true,
                 null,
+                chips,
                 metrics,
                 inputs,
                 selectedView,
@@ -243,6 +284,8 @@ public class ReportService {
                 overVoltage,
                 supplyText,
                 supplyOk,
+                supplyHaveText,
+                supplyRemainText,
                 speedChart,
                 forceChart,
                 units == null ? "" : units.velocity(),
@@ -258,16 +301,19 @@ public class ReportService {
             String message,
             AxisKind axis,
             boolean pointToPoint,
-            CalculationRequest.Plan plan) {
+            CalculationRequest.Plan plan,
+            String direction,
+            List<ReportModel.ReportChip> chips) {
         return new ReportModel.ReportPlanModel(
                 planNo,
                 "无法计算",
                 false,
                 message == null ? "无法计算" : message,
+                chips,
                 List.of(),
                 plan == null || axis == null
                         ? List.of()
-                        : inputRows(axis, pointToPoint, plan, null, false),
+                        : inputRows(axis, pointToPoint, plan, direction, null, false),
                 null,
                 List.of(),
                 "",
@@ -275,6 +321,8 @@ public class ReportService {
                 "",
                 "",
                 false,
+                null,
+                null,
                 null,
                 null,
                 "",
@@ -318,11 +366,14 @@ public class ReportService {
         metrics.add(metric("峰值力 / 力矩", fmt(theoretical.peakForce(), 1), units.force(), false));
         metrics.add(metric("最大加速度", fmt(curve.peakAcceleration(), 1), units.acceleration(), false));
         metrics.add(metric("最大速度", fmt(curve.peakVelocity(), 1), units.velocity(), false));
-        metrics.add(metric("安全余量",
-                applied == null || applied.safetyPercent() == null
-                        ? "—"
-                        : fmt(applied.safetyPercent(), 1),
-                "%", true));
+        // 安全余量为负说明需求已超过电机能力，报告里必须一眼看出，不能和正常值同色
+        Double safety = applied == null ? null : applied.safetyPercent();
+        metrics.add(new ReportModel.ReportMetric(
+                "安全余量",
+                safety == null ? "—" : fmt(safety, 1),
+                "%",
+                true,
+                safety != null && safety < 0));
         metrics.add(metric("总循环周期", fmt(theoretical.cycleTime(), 1), "s", false));
         List<List<ReportModel.ReportMetric>> rows = new ArrayList<>();
         for (int index = 0; index < metrics.size(); index += 3) {
@@ -342,6 +393,7 @@ public class ReportService {
             AxisKind axis,
             boolean pointToPoint,
             CalculationRequest.Plan plan,
+            String direction,
             CalculationResponse.Curve curve,
             boolean computed) {
         boolean linear = axis == AxisKind.LINEAR;
@@ -381,6 +433,10 @@ public class ReportService {
                 fmt(plan == null ? null : plan.resistance(), 4),
                 computed ? fmt(plan == null ? null : plan.resistance(), 4) : "—",
                 linear ? "N" : "N·m"));
+        // 界面 M4 的「方向（上/下）」单选：只是倾斜角的快捷设定，计算列没有对应的值
+        if (linear) {
+            rows.add(pair("方向", directionLabel(direction, plan), "—", ""));
+        }
         rows.add(pair("倾斜角度",
                 fmt(plan == null ? null : plan.tiltDeg(), 2),
                 computed ? fmt(plan == null ? null : plan.tiltDeg(), 2) : "—",
@@ -445,9 +501,42 @@ public class ReportService {
 
     // ---------------------------------------------------------------- 工具
 
+    /**
+     * 每方案页首的「计算设置」条：对应界面左列「运动模式」+ 中列「安全余量」两块。
+     * 形状是方案级字段，所以这一条放在方案页而不是封面。
+     */
+    private static List<ReportModel.ReportChip> settingChips(
+            boolean pointToPoint, String shape, ReportRequest.Settings settings) {
+        List<ReportModel.ReportChip> chips = new ArrayList<>();
+        chips.add(new ReportModel.ReportChip("运动模式", modeLabel(settings.mode())));
+        chips.add(new ReportModel.ReportChip("运动形状", pointToPoint ? shapeLabel(shape) : "不适用"));
+        chips.add(new ReportModel.ReportChip("S 曲线", smoothLabel(settings.smooth())));
+        chips.add(new ReportModel.ReportChip("安全余量", marginLabel(settings.margin())));
+        return chips;
+    }
+
+    /**
+     * 「方向」行：优先用前端提交的单选值（界面显示什么报告就显示什么）；
+     * 老请求没带该字段时按倾斜角的正弦符号反推（上 = 90°、下 = 270°）。
+     */
+    private static String directionLabel(String direction, CalculationRequest.Plan plan) {
+        if ("up".equals(direction)) {
+            return "上";
+        }
+        if ("down".equals(direction)) {
+            return "下";
+        }
+        double tilt = plan == null || plan.tiltDeg() == null ? 0 : plan.tiltDeg();
+        double sin = Math.sin(Math.toRadians(tilt));
+        if (sin > 1e-9) {
+            return "上";
+        }
+        return sin < -1e-9 ? "下" : "—";
+    }
+
     private static ReportModel.ReportMetric metric(
             String label, String value, String unit, boolean emphasis) {
-        return new ReportModel.ReportMetric(label, value, unit, emphasis);
+        return new ReportModel.ReportMetric(label, value, unit, emphasis, false);
     }
 
     private static ReportModel.ReportPairRow pair(
@@ -549,9 +638,12 @@ public class ReportService {
     }
 
     private static String filename(String projectName, String axisName) {
-        String safeProject = projectName.trim().replaceAll("[\\\\/:*?\"<>|]", "_");
-        String safeAxis = axisName.trim().replaceAll("[\\\\/:*?\"<>|]", "_");
-        return safeProject + "-" + safeAxis + "-电机选型报告.pdf";
+        return sanitizeFilename(projectName) + "-" + sanitizeFilename(axisName) + "-电机选型报告.pdf";
+    }
+
+    /** Windows 文件名禁用字符替换：另存为对话框里不能出现 \ / : * ? " < > |。 */
+    private static String sanitizeFilename(String value) {
+        return value.trim().replaceAll("[\\\\/:*?\"<>|]", "_");
     }
 
     private static void requireText(
