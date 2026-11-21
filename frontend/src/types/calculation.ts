@@ -96,7 +96,7 @@ export interface CandidateMotor {
   motorType: string
   structure: string
   cooling: string
-  /** 列表 Safety（已扣下限门槛），与应用值 safetyPercent 口径不同（C-C）。 */
+  /** 列表 Safety = 安全余量（含下限门槛）：与应用值 safetyPercent 同值同口径（2026-11-21 起）。 */
   headroomRatio: number
   overSized: boolean
   reasons: string[]
@@ -124,7 +124,7 @@ export interface AppliedValues {
   contCurrent: number | null
   peakCurrent: number | null
   busVoltage: number | null
-  /** 应用值安全系数（与 headroomRatio 不同名，见 02 C-C）。 */
+  /** 安全余量（%）：能力 ÷（需求 ×(1+下限)）− 1，与列表 Safety 同值；0 = 刚好卡在下限。 */
   safetyPercent: number | null
   contLoadPercent: number | null
   peakLoadPercent: number | null

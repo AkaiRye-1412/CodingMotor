@@ -80,5 +80,7 @@ if __name__ == "__main__":
     if len(sys.argv) != 3:
         print("用法: python jar_slim.py <fat.jar> <out.jar>")
         sys.exit(2)
-    new, old = slim_fat_jar(sys.argv[1], sys.argv[2])
+    # slim_fat_jar 只返回新大小，旧大小要自己取（原来按元组解包，CLI 一跑就 TypeError）
+    old = os.path.getsize(sys.argv[1])
+    new = slim_fat_jar(sys.argv[1], sys.argv[2])
     print(f"{old/1024/1024:.1f} MB -> {new/1024/1024:.1f} MB（省 {(old-new)/1024/1024:.1f} MB）")

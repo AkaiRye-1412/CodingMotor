@@ -11,7 +11,7 @@ MotorSizer 安装包（.msi）打包器。
   2. 先跑 loader\\build_loader.py 得到 MotorSizerLoader.exe
   3. 本机已装 WiX Toolset（默认在 D:\\WiX\\3.14.1）
 
-产出：dist\\MotorSizer-1.1.0.msi
+产出：dist\\MotorSizer-1.1.2.msi
 """
 import os
 import shutil
@@ -114,7 +114,7 @@ CANDLE = os.path.join(WIX, "candle.exe")
 LIGHT = os.path.join(WIX, "light.exe")
 HEAT = os.path.join(WIX, "heat.exe")
 
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.1.2"
 UPGRADE_CODE = "8C7A9D2E-6F1B-4A3E-9B5C-1D2E3F4A5B6C"  # 固定，用于版本升级识别
 PRODUCT_NAME = "MotorSizer"
 VENDOR = "Akribis"

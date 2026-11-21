@@ -296,6 +296,62 @@ namespace MotorSizer
                 await _webView.EnsureCoreWebView2Async(env);
                 Program.Log("EnsureCoreWebView2Async 完成, CoreWebView2=" + (_webView.CoreWebView2 != null));
 
+                // ---- 去浏览器化：WebView2 默认右键菜单（返回/前进/刷新/另存为/打印/检查）是控件自带的，
+                //      页面里管不了，只能在这里拦：默认菜单项里只保留「文本编辑」类
+                //      （撤销/剪切/复制/粘贴/删除/全选，方便从 Excel 粘数），其余一律剔除；
+                //      剔除后为空（页面空白 / 图片 / 普通元素）就直接不弹菜单。
+                var settings = _webView.CoreWebView2.Settings;
+                settings.AreDevToolsEnabled = false;                // 去掉「检查」项，同时禁用 F12
+                settings.IsStatusBarEnabled = false;                // 去掉左下角悬停链接地址条
+                settings.AreBrowserAcceleratorKeysEnabled = false;  // 禁 F5/Ctrl+P/Ctrl+F 等浏览器快捷键，编辑快捷键不受影响
+
+                _webView.CoreWebView2.ContextMenuRequested += (s, args) =>
+                {
+                    try
+                    {
+                        var items = args.MenuItems;
+                        // 判据：只有文本编辑区才会出现「粘贴」项。没有粘贴项就说明右键落在
+                        // 页面空白 / 图片 / 图表 canvas 上（这些地方的默认菜单是 复制图像/刷新/打印…），
+                        // 一律不弹菜单。
+                        bool hasPaste = false;
+                        for (int i = 0; i < items.Count; i++)
+                        {
+                            string nm = ((items[i].Name == null ? "" : items[i].Name) + " " +
+                                         (items[i].Label == null ? "" : items[i].Label)).ToLowerInvariant();
+                            if (nm.IndexOf("paste", StringComparison.Ordinal) >= 0 ||
+                                nm.IndexOf("粘贴", StringComparison.Ordinal) >= 0)
+                            {
+                                hasPaste = true;
+                                break;
+                            }
+                        }
+                        if (!hasPaste)
+                        {
+                            args.Handled = true;
+                            Program.Log("ContextMenuRequested: 非编辑区域，已屏蔽");
+                            return;
+                        }
+                        int removed = 0;
+                        for (int i = items.Count - 1; i >= 0; i--)
+                        {
+                            CoreWebView2ContextMenuItem item = items[i];
+                            if (item.Kind == CoreWebView2ContextMenuItemKind.Separator || !IsEditMenuItem(item))
+                            {
+                                items.RemoveAt(i);
+                                removed++;
+                            }
+                        }
+                        if (items.Count == 0) args.Handled = true;
+                        Program.Log("ContextMenuRequested: 剔除 " + removed + " 项，保留 " + items.Count +
+                                    " 项，target=" + (args.ContextMenuTarget == null ? "null" : args.ContextMenuTarget.Kind.ToString()));
+                    }
+                    catch (Exception ex)
+                    {
+                        Program.Log("ContextMenuRequested 异常: " + ex);
+                        args.Handled = true;
+                    }
+                };
+
                 _webView.CoreWebView2.NavigationStarting += (s, args) =>
                 {
                     Program.Log("NavigationStarting: " + args.Uri);
@@ -328,6 +384,23 @@ namespace MotorSizer
         private void MainForm_FormClosed(object sender, FormClosedEventArgs e)
         {
             Program.Log("MainForm_FormClosed");
+        }
+
+        // 判断是否是文本编辑类菜单项（剪切/复制/粘贴/撤销/重做/删除/全选）。
+        // Name 是未本地化的英文名，Label 是本地化文本，两个都比一遍保证各语言环境都能识别。
+        private static bool IsEditMenuItem(CoreWebView2ContextMenuItem item)
+        {
+            string key = ((item.Name == null ? "" : item.Name) + " " +
+                          (item.Label == null ? "" : item.Label)).ToLowerInvariant();
+            string[] allow = {
+                "undo", "redo", "cut", "copy", "paste", "delete", "select all", "selectall",
+                "撤销", "重做", "剪切", "复制", "粘贴", "删除", "全选"
+            };
+            for (int i = 0; i < allow.Length; i++)
+            {
+                if (key.IndexOf(allow[i], StringComparison.Ordinal) >= 0) return true;
+            }
+            return false;
         }
     }
 }

@@ -366,7 +366,7 @@ public class ReportService {
         metrics.add(metric("峰值力 / 力矩", fmt(theoretical.peakForce(), 1), units.force(), false));
         metrics.add(metric("最大加速度", fmt(curve.peakAcceleration(), 1), units.acceleration(), false));
         metrics.add(metric("最大速度", fmt(curve.peakVelocity(), 1), units.velocity(), false));
-        // 安全余量为负说明需求已超过电机能力，报告里必须一眼看出，不能和正常值同色
+        // 安全余量与推荐列表 Safety 同口径（含下限门槛）：为负 = 连下限都没达到，必须一眼看出
         Double safety = applied == null ? null : applied.safetyPercent();
         metrics.add(new ReportModel.ReportMetric(
                 "安全余量",
@@ -491,7 +491,7 @@ public class ReportService {
         rows.add(row("峰值电流", appliedValue(applied.peakCurrent(), "缺 " + currentConstant), "A"));
         rows.add(row("直流母线电压", appliedValue(applied.busVoltage(),
                 applied.missing().isEmpty() ? null : "缺 " + String.join(" / ", applied.missing())), "Vdc"));
-        rows.add(row("安全系数", fmt(applied.safetyPercent(), 1), "%"));
+        rows.add(row("安全余量", fmt(applied.safetyPercent(), 1), "%"));
         rows.add(row("持续" + (linear ? "力" : "力矩") + "负载系数",
                 fmt(applied.contLoadPercent(), 1), "%"));
         rows.add(row("峰值" + (linear ? "力" : "力矩") + "负载系数",
@@ -511,7 +511,7 @@ public class ReportService {
         chips.add(new ReportModel.ReportChip("运动模式", modeLabel(settings.mode())));
         chips.add(new ReportModel.ReportChip("运动形状", pointToPoint ? shapeLabel(shape) : "不适用"));
         chips.add(new ReportModel.ReportChip("S 曲线", smoothLabel(settings.smooth())));
-        chips.add(new ReportModel.ReportChip("安全余量", marginLabel(settings.margin())));
+        chips.add(new ReportModel.ReportChip("安全余量门槛", marginLabel(settings.margin())));
         return chips;
     }
 

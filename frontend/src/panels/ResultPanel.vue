@@ -6,6 +6,7 @@ import { formatNumber } from '@/utils/format'
 /**
  * M6：理论计算结果 6 张指标卡。
  * 安全余量只在选中电机后出现（读取 applied.safetyPercent），未选电机显示「—」。
+ * 2026-11-21：与推荐列表的 Safety 同一个数（含余量下限），不再有两套口径。
  */
 interface MetricCard {
   label: string

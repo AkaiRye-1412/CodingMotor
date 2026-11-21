@@ -111,7 +111,7 @@ const rows = computed<AppliedRow[]>(() => {
           ? `缺 ${a.missing.join(' / ')}`
           : '',
     },
-    { label: '安全系数', value: a?.safetyPercent, unit: '%', missing: '' },
+    { label: '安全余量', value: a?.safetyPercent, unit: '%', missing: '' },
     {
       label: `持续${force}负载系数`,
       value: a?.contLoadPercent,
@@ -134,7 +134,7 @@ const rows = computed<AppliedRow[]>(() => {
     :style="props.minHeight ? { minHeight: `${props.minHeight}px` } : undefined"
   >
     <div v-if="!selected" class="section-placeholder">
-      选取电机后显示：线圈温度、电流、母线电压、安全系数。
+      选取电机后显示：线圈温度、电流、母线电压、安全余量。
     </div>
 
     <template v-else>

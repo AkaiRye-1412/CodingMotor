@@ -20,6 +20,9 @@ import java.util.List;
  *
  * <p>逐行等价于原型 {@code calc.js:appliedValue}；{@code env.load()} 传的是**总负载**
  * （用户负载 + 选中电机自身质量/惯量，CAL-26；第 45 轮曾为纯负载）。
+ *
+ * <p>唯一不照抄原型的是安全余量：2026-11-21 起改为与列表 Safety 同口径（扣过余量下限），
+ * 见 {@link #applied} 内的注释。原型是「(能力 − 需求) ÷ 需求」的纯物理富余。
  */
 public final class AppliedCalculator {
 
@@ -32,12 +35,16 @@ public final class AppliedCalculator {
     private AppliedCalculator() {
     }
 
+    /**
+     * @param marginLow 安全余量下限（0.3 表示 30%）：安全余量与之同口径，见下方 {@code safety}
+     */
     public static AppliedResult applied(
             AxisKind kind,
             MotorParameters motor,
             TheoreticalResult theoretical,
             MotionCurve curve,
-            AppliedEnvironment env) {
+            AppliedEnvironment env,
+            double marginLow) {
 
         double ambientTemp = env.ambientTemp() != null && Double.isFinite(env.ambientTemp())
                 ? env.ambientTemp()
@@ -146,8 +153,12 @@ public final class AppliedCalculator {
         Double contHave = motor.value(kind == AxisKind.LINEAR ? "forceCont" : "torqueCont");
         Double peakHave = motor.value(kind == AxisKind.LINEAR ? "forcePeak" : "torquePeak");
 
+        // 安全余量与 K1 列表的 Safety 同口径（2026-11-21 用户裁定，取代第 45 轮的纯物理口径）：
+        //   安全余量 = 持续能力 / (实际持续需求 × (1 + 下限)) − 1
+        // 0 表示刚好卡在下限，负值表示低于下限。与 MotorEvaluator.headroom 逐字同一公式，
+        // 因此「顶部指标卡 / 应用值面板 / 报告 / 推荐列表」四处永远是同一个数。
         Double safety = contApplied > 0 && contHave != null
-                ? ((contHave - contApplied) / contApplied) * 100
+                ? ((contHave / (contApplied * (1 + marginLow))) - 1) * 100
                 : null;
         Double loadCont = isFinite(contHave) && contHave > 0
                 ? (contApplied / contHave) * 100

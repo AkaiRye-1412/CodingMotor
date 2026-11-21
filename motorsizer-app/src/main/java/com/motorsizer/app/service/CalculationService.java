@@ -211,7 +211,8 @@ public class CalculationService {
                         input.dwell(),
                         input.ambientTemp(),
                         input.supplyVoltage(),
-                        input.tiltDeg()));
+                        input.tiltDeg()),
+                input.marginLow());
 
         return new CalculationResponse.SelectedMotor(
                 motor.motorId(),

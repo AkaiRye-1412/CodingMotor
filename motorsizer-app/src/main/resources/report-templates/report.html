@@ -301,7 +301,7 @@
             color: #1d4ed8;
         }
 
-        /* 安全余量为负 = 需求已超能力，用红色与正常值区分开 */
+        /* 安全余量为负 = 连余量下限都没达到（与推荐列表 Safety 同口径），用红色与正常值区分开 */
         table.metrics td.metric-bad {
             background-color: #fdecea;
             border-color: #e3b6b0;
@@ -653,7 +653,7 @@
                 <div class="chip-value" th:text="${report.smoothLabel}">关闭</div>
             </td>
             <td class="chip">
-                <div class="chip-label">安全余量</div>
+                <div class="chip-label">安全余量门槛</div>
                 <div class="chip-value" th:text="${report.marginLabel}">下限 30%</div>
             </td>
         </tr>
@@ -878,7 +878,8 @@
         <!-- 口径说明（每方案一页，随本方案结论一起给出） -->
         <div class="section"><span class="section-bar"></span>口径说明</div>
         <ul class="notes">
-            <li>理论计算结果仅含负载，未计入电机自身惯量；峰值需求同样仅含负载。</li>
+            <li>理论计算结果按「用户负载 + 选入电机自身质量/惯量」计算；未选电机时只含用户负载。</li>
+            <li>安全余量 = 持续能力 ÷（持续需求 ×(1 + 余量下限)）− 1，0 表示刚好达到下限、负值表示低于下限；推荐列表的 Safety 与它同一个数。</li>
             <li>应用值按电机库参数与本次工况推导，线圈温度为热平衡估算值。</li>
             <li>供电判定取「供电母线 ≥ 所需电压」；未填写供电母线时不做判定。</li>
             <li>运动曲线由与软件界面同一份采样数据重绘，阶段分界为加速 / 匀速 / 减速切换点。</li>

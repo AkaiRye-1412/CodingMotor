@@ -29,6 +29,7 @@ public record AppliedResult(
         List<String> uMissing,
         /** 热校核缺哪些电机参数（算温度 / 判超温各自需要什么，逐项列出）。 */
         List<String> thermalMissing,
+        /** 安全余量 %：能力 ÷（需求 ×(1+下限)）− 1，与列表 Safety 同口径，0 = 刚好卡在下限。 */
         Double safety,
         Double loadCont,
         Double loadPeak,

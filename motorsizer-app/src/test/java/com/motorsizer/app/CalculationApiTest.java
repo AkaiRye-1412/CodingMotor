@@ -185,7 +185,12 @@ class CalculationApiTest {
 
         JsonNode applied = selected.path("applied");
         assertThat(applied.path("thermalVerdict").asText()).isEqualTo("pass");
-        assertThat(applied.path("safetyPercent").asDouble()).isCloseTo(86.19, within(0.01));
+        // 安全余量 = 12 / (6.445 × 1.3) − 1 = 43.22%（含下限 30%，2026-11-21 口径变更）
+        assertThat(applied.path("safetyPercent").asDouble()).isCloseTo(43.22, within(0.01));
+        // 与列表 Safety 必须同值：同一台电机、同一条公式，防止两处口径再次分叉
+        assertThat(applied.path("safetyPercent").asDouble())
+                .isCloseTo(data.path("candidates").get(0).path("headroomRatio").asDouble() * 100,
+                        within(1e-6));
         assertThat(applied.path("supply").path("pass").asBoolean()).isTrue();
         assertThat(applied.path("supply").path("text").asText()).contains("供电满足");
     }

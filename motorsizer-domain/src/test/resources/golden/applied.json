@@ -7,6 +7,7 @@
     "fixturesSha256": "0612eba699c5d2192b92109224f35f9f4cc322dad24db72f7a88010b7ae1de68",
     "frozenAt": "2026-11-18",
     "tolerance": 1e-9,
+    "safetyOverride": "2026-11-21 用户裁定：安全余量与 K1 列表 Safety 同口径（扣过余量下限）。快照中 safety 由原型值换算：((1 + 原型值/100) / (1 + env.marginLow) − 1) × 100，其余字段与原型逐字一致。",
     "note": "快照由 Node 一次性生成后冻结；Java 单测只读这些 JSON 比对，构建链不依赖 Node。修改 calc.js 或 data.js 后必须重新运行 node scripts/gen-golden.js 并评审快照差异。"
   },
   "cases": [
@@ -43,7 +44,7 @@
         "uAtCruise": 19.75751358496259,
         "rVolt": 5.341038037895259,
         "uMissing": [],
-        "safety": 58.51247814277841,
+        "safety": 21.93267549444493,
         "loadCont": 63.08651607220857,
         "loadPeak": 35.13484775386699,
         "supply": {
@@ -91,7 +92,7 @@
         "uAtCruise": 5.849999999999999,
         "rVolt": 9.292183885028614,
         "uMissing": [],
-        "safety": 86.18986725025255,
+        "safety": 43.22297480788657,
         "loadCont": 53.70861555295746,
         "loadPeak": 18.75,
         "supply": {
@@ -139,7 +140,7 @@
         "uAtCruise": 5.849999999999999,
         "rVolt": 15.406856781246136,
         "uMissing": [],
-        "safety": -34.6947395504993,
+        "safety": -49.76518426961485,
         "loadCont": 153.1270211797533,
         "loadPeak": 59.62500000000001,
         "supply": {
@@ -187,7 +188,7 @@
         "uAtCruise": 9.299999999999999,
         "rVolt": 5.1,
         "uMissing": [],
-        "safety": 675.7911135427189,
+        "safety": 496.76239503286075,
         "loadCont": 12.890067732709792,
         "loadPeak": 4.5,
         "supply": {
@@ -235,7 +236,7 @@
         "uAtCruise": 9.299999999999999,
         "rVolt": 5.1,
         "uMissing": [],
-        "safety": 675.7911135427189,
+        "safety": 496.76239503286075,
         "loadCont": 12.890067732709792,
         "loadPeak": 4.5,
         "supply": null,
@@ -276,7 +277,7 @@
         "uAtCruise": 0.486,
         "rVolt": 9.706307934526812,
         "uMissing": [],
-        "safety": -60.989607800119764,
+        "safety": -69.99200600009212,
         "loadCont": 256.3419498261465,
         "loadPeak": 81.08108108108108,
         "supply": {

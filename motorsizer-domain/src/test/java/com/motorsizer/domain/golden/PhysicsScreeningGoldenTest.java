@@ -77,8 +77,11 @@ class PhysicsScreeningGoldenTest {
 
             AxisKind kind = AxisKind.fromCode(testCase.path("kind").asText());
             MotorParameters motor = motor(testCase.path("motorId").asText());
+            // 安全余量 2026-11-21 起与列表 Safety 同口径，需要余量下限（快照 env.marginLow 自带）
             AppliedResult actual = AppliedCalculator.applied(
-                    kind, motor, theoreticalResult, curve, environment(testCase.path("env")));
+                    kind, motor, theoreticalResult, curve,
+                    environment(testCase.path("env")),
+                    testCase.path("env").path("marginLow").asDouble());
 
             assertClose(id + ".totalInertia", expected.path("totalInertia"), actual.totalInertia());
             assertClose(id + ".peakApplied", expected.path("peakApplied"), actual.peakApplied());
