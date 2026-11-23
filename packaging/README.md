@@ -63,3 +63,79 @@ packaging/windows/
   后者由 `jar_slim.py` 在打包时裁剪：只留 `win-x64/*.dll`，剔掉 linux/osx 全部原生库
   与所有 `.pdb`/`.dSYM` 调试符号（仅 `onnxruntime.pdb` 就占压缩后 58MB）。
   fat jar 181.8MB → 97.5MB，省 84.3MB。原 `target/` jar 不动，其他平台仍可构建。
+
+## MSI 安装包（企业分发）
+
+产物 `dist\MotorSizer-<版本>.msi`（perMachine 装到 `C:\Program Files\MotorSizer`，
+同 UpgradeCode、每版新 ProductCode，靠 `<MajorUpgrade>` 覆盖升级）。
+
+**版本号唯一来源**：`packaging/windows/version.txt`。`package_app.py` 用它做
+`--app-version` 与 `-Dmotorsizer.version`，`build_msi.py` 用它写 MSI 的 Product Version。
+发版只改这一个文件。
+
+流程：
+
+```
+scripts\build.bat                     # 后端 + 前端 + 合进 jar
+packaging\windows\package.bat         # 绿色包 app-image（含 jlink / jpackage / loader）
+python packaging\windows\build_msi.py # → dist\MotorSizer-<版本>.msi
+```
+
+### 升级与卸载（终端用户口径）
+
+- **升级不用先卸载旧版**：直接双击新 msi，`<MajorUpgrade>` 会把同 UpgradeCode 的旧版本
+  自动卸掉再装新版（`RemoveExistingProducts` 默认排在 `InstallValidate` 之后，即「先完整
+  卸载旧版 → 再装新版」；中途失败重跑一次 msi 即可恢复）。
+- **同版本号重装也允许**（`AllowSameVersionUpgrades="yes"`，每版 ProductCode 都不同），
+  用于修复装坏的环境。
+- **降级被拦**：装低于当前的版本会提示「已安装更新的版本，无法降级安装。」，必须先手动卸载。
+- **必须先退出程序**：jar 与 `runtime\bin\java.exe` 被占用时安装会失败/回滚；正常关窗口
+  会在 `Run()` 的 `finally` 里 `Kill` 后端，异常退出残留的 `java.exe` 需在任务管理器结束。
+- **需要管理员**：perMachine 装到 `C:\Program Files\MotorSizer`，会弹 UAC。
+- **数据不动**：H2 库在 `%APPDATA%\MotorSizer\data`、WebView 缓存在
+  `%APPDATA%\MotorSizer\webview-data`，都不在安装目录里，升级与卸载都不会碰。
+- **另一套安装器不受管**：老机器上若残留 `AkribisMotorSizerSetup`（不是本 MSI，没有
+  UpgradeCode 关系），不会被自动卸载，需手动删掉，以免快捷方式与端口冲突。
+
+### 打包前的两道新鲜度闸门
+
+`package_app.py` 会主动拦住两类「版本号升了、内容是旧的」：
+
+1. **后端新鲜度**：`target` 里的 jar 不能比 `motorsizer-app` / `motorsizer-domain` 的
+   `src/main` 源码旧 —— 防「改完代码没重新 package 就打包」。
+2. **前端新鲜度**：jar 内 `BOOT-INF/classes/static/index.html` 引用的 `index-<hash>.js`
+   必须与 `frontend/dist/index.html` 一致 —— 防用 `-DskipFrontend=true` 打包时，
+   把 `target/classes/static` 里上一次的前端产物带进包。
+
+`build_msi.py` 再校验一次：app-image 里的 jar 不早于 target jar，且
+`app\.jpackage.xml` 的版本与 `version.txt` 一致。
+
+### 版本在哪儿看
+
+- 窗口标题：`MotorSizer  电机选型工具  v<版本>`（loader 读 `app\.jpackage.xml`）。
+- `GET http://127.0.0.1:<port>/api/health` 的 `data.version`：loader 用
+  `-Dmotorsizer.version=<版本>` 传给后端（**loader 是直接 `java -jar` 起的后端，
+  不走 jpackage 的 `MotorSizerBackend.cfg`，所以参数必须自己传**）。
+
+### 坑：卸载旧版、装新版，界面和功能还是旧的
+
+现象：ARP/安装列表里版本号已经变成新版，程序打开却还是上一版的界面。
+三层原因叠加，缺一不可：
+
+1. 后端静态资源只返回 `Last-Modified`、**没有 `Cache-Control`**，Chromium 按
+   「启发式缓存」（freshness ≈ 距 Last-Modified 时长的 10%）直接命中本地缓存。
+2. WebView2 的用户数据目录固定在 `%APPDATA%\MotorSizer\webview-data`，**卸载不清理**；
+   而后端端口常年就是 8080，index.html 的 URL 与旧版逐字相同 → 缓存必然命中。
+3. loader 关掉了浏览器快捷键（`AreBrowserAcceleratorKeysEnabled=false`，含 F5/Ctrl+F5），
+   用户连强制刷新都做不到。
+
+1.1.4 起的修复：
+
+- 后端 `application.yml` 加 `spring.web.resources.cache.cachecontrol.no-cache /
+  must-revalidate`，每次请求都向服务器校验（命中时走 304，开销可忽略）。
+- loader 启动 URL 追加 `?v=<启动时间戳>`，每次启动都换 URL，彻底绕开残留缓存；
+  页面内 js/css 带内容 hash，仍可正常缓存。
+- 窗口标题带版本，装错版本一眼可见。
+
+**应急办法**（已装老版本、暂时不升级）：关掉程序 → 删除
+`%APPDATA%\MotorSizer\webview-data` 整个目录 → 重新打开。数据在 `data\` 下，不受影响。

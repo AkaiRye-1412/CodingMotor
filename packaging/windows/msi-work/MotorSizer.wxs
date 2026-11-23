@@ -4,7 +4,7 @@
            Name="MotorSizer"
            Language="2052"
            Manufacturer="Akribis"
-           Version="1.1.3"
+           Version="1.1.4"
            UpgradeCode="8C7A9D2E-6F1B-4A3E-9B5C-1D2E3F4A5B6C">
 
     <Package InstallerVersion="500"

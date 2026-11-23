@@ -11,12 +11,13 @@ MotorSizer 安装包（.msi）打包器。
   2. 先跑 loader\\build_loader.py 得到 MotorSizerLoader.exe
   3. 本机已装 WiX Toolset（默认在 D:\\WiX\\3.14.1）
 
-产出：dist\\MotorSizer-1.1.3.msi
+产出：dist\\MotorSizer-<version>.msi（版本号见 packaging\\windows\\version.txt）
 """
 import os
 import shutil
 import subprocess
 import sys
+import time
 
 
 # WiX 主模板：定义安装目录、Feature、快捷方式、卸载、UIRef
@@ -114,7 +115,23 @@ CANDLE = os.path.join(WIX, "candle.exe")
 LIGHT = os.path.join(WIX, "light.exe")
 HEAT = os.path.join(WIX, "heat.exe")
 
-APP_VERSION = "1.1.3"
+APP_VERSION_FILE = os.path.join(PKG, "version.txt")
+
+
+def read_version():
+    """版本号唯一来源：packaging/windows/version.txt（与 package_app.py 同一份）。"""
+    if not os.path.exists(APP_VERSION_FILE):
+        print(f"[错误] 未找到版本文件：{APP_VERSION_FILE}")
+        sys.exit(1)
+    with open(APP_VERSION_FILE, encoding="utf-8") as f:
+        v = f.read().strip()
+    if not v:
+        print(f"[错误] 版本文件为空：{APP_VERSION_FILE}")
+        sys.exit(1)
+    return v
+
+
+APP_VERSION = read_version()
 UPGRADE_CODE = "8C7A9D2E-6F1B-4A3E-9B5C-1D2E3F4A5B6C"  # 固定，用于版本升级识别
 PRODUCT_NAME = "MotorSizer"
 VENDOR = "Akribis"
@@ -149,6 +166,25 @@ if not os.path.exists(APP_IMAGE):
     print(f"[错误] 未找到 app-image：{APP_IMAGE}")
     print("请先运行 package_app.py 产出绿色包。")
     sys.exit(1)
+
+# 防「拿旧 app-image 重新 link 出一个新版本号的 MSI」：jar 时间与版本号都要对得上
+app_jar = os.path.join(APP_IMAGE, "app", "motorsizer-app-1.0.0-SNAPSHOT.jar")
+target_jar = os.path.join(ROOT, "motorsizer-app", "target", "motorsizer-app-1.0.0-SNAPSHOT.jar")
+if not os.path.exists(app_jar):
+    print(f"[错误] app-image 里没有 jar：{app_jar}")
+    sys.exit(1)
+if os.path.exists(target_jar) and os.path.getmtime(app_jar) < os.path.getmtime(target_jar) - 1:
+    print("[错误] app-image 里的 jar 比 target 的旧，说明没有重新跑 package_app.py：")
+    print("  app-image:", time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(os.path.getmtime(app_jar))))
+    print("  target   :", time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(os.path.getmtime(target_jar))))
+    sys.exit(1)
+jp_xml = os.path.join(APP_IMAGE, "app", ".jpackage.xml")
+if os.path.exists(jp_xml):
+    with open(jp_xml, encoding="utf-8") as f:
+        if f"<app-version>{APP_VERSION}</app-version>" not in f.read():
+            print(f"[错误] app-image 的版本与 version.txt（{APP_VERSION}）不一致，请重跑 package_app.py。")
+            sys.exit(1)
+    print(f"  app-image 版本校验通过: {APP_VERSION}")
 
 # ---------- 0. 准备工作目录 ----------
 step(0, "准备 WiX 中间产物目录")

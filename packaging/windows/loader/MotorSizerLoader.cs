@@ -16,8 +16,7 @@ namespace MotorSizer
         private static string _logPath;
 
         // 简单日志：写到 APPDATA/MotorSizer/logs/loader.log
-        internal static void Log(string msg)
-        {
+        internal static void Log(string msg)        {
             try
             {
                 if (_logPath == null)
@@ -32,6 +31,27 @@ namespace MotorSizer
                 File.AppendAllText(_logPath, line + Environment.NewLine);
             }
             catch { }
+        }
+
+        // 读 jpackage 写进 app-image 的版本号（app\.jpackage.xml 里的 app-version 元素）。
+        // 版本只在打包脚本 version.txt 里维护一处，这里跟着包走；读不到返回空串。
+        internal static string ReadAppVersion(string exeDir)
+        {
+            try
+            {
+                string xml = Path.Combine(exeDir, "app", ".jpackage.xml");
+                if (!File.Exists(xml)) return "";
+                string text = File.ReadAllText(xml);
+                const string open = "<app-version>";
+                const string close = "</app-version>";
+                int i = text.IndexOf(open, StringComparison.Ordinal);
+                if (i < 0) return "";
+                i += open.Length;
+                int j = text.IndexOf(close, i, StringComparison.Ordinal);
+                if (j < 0) return "";
+                return text.Substring(i, j - i).Trim();
+            }
+            catch { return ""; }
         }
 
         [STAThread]
@@ -92,10 +112,16 @@ namespace MotorSizer
             }
 
             // 启动 Java 后端子进程
+            // 注意：这里绕过了 jpackage 的 MotorSizerBackend.cfg，所以 cfg 里的 java-options 全部失效，
+            // 必须自己把编码与版本传进去（版本用于 /api/health 与日志，便于核对装的是哪一版）。
+            string appVersion = ReadAppVersion(exeDir);
             Process backend = new Process();
             backend.StartInfo.FileName = runtimeJava;
             backend.StartInfo.Arguments =
-                "-Dmotorsizer.openBrowser=false -jar \"" + jarPath + "\"";
+                "-Dfile.encoding=UTF-8 -Dsun.stdout.encoding=UTF-8 -Dsun.stderr.encoding=UTF-8"
+                + " -Dmotorsizer.openBrowser=false"
+                + (string.IsNullOrEmpty(appVersion) ? "" : " -Dmotorsizer.version=" + appVersion)
+                + " -jar \"" + jarPath + "\"";
             backend.StartInfo.UseShellExecute = false;
             backend.StartInfo.CreateNoWindow = true;
             backend.EnableRaisingEvents = true;
@@ -250,7 +276,9 @@ namespace MotorSizer
         {
             _port = port;
             _exeDir = exeDir;
-            Text = "MotorSizer  电机选型工具";
+            // 标题带版本：用户/售后一眼能确认装的是哪一版（版本来自 jpackage 写在 app\.jpackage.xml 的值）
+            string appVersion = Program.ReadAppVersion(exeDir);
+            Text = "MotorSizer  电机选型工具" + (string.IsNullOrEmpty(appVersion) ? "" : "  v" + appVersion);
 
             // 窗口初始尺寸基于屏幕工作区动态计算，避免在较矮的屏幕上被系统钳制
             // 导致内容（如左列「用户输入」底部脚注）被裁切。
@@ -367,7 +395,11 @@ namespace MotorSizer
                     Program.Log("NavigationCompleted: success=" + args.IsSuccess);
                 };
 
-                string url = "http://127.0.0.1:" + _port;
+                // 带一次性启动时间戳：WebView2 的本地缓存不随安装目录走（用户数据目录固定在
+                // %APPDATA%\MotorSizer\webview-data，卸载不会清理），而后端端口常年就是 8080，
+                // 于是 URL 与旧版逐字相同 → 旧 index.html 命中缓存，卸载重装后看到的还是老界面。
+                // 每次启动换一个查询串强制走网络；页面里引用的 js/css 带内容 hash，不受影响。
+                string url = "http://127.0.0.1:" + _port + "/?v=" + DateTime.Now.Ticks;
                 Program.Log("Navigate: " + url);
                 _webView.CoreWebView2.Navigate(url);
                 Program.Log("Navigate 已调用");
