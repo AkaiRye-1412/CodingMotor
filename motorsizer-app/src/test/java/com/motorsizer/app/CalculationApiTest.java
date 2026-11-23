@@ -254,6 +254,47 @@ class CalculationApiTest {
         assertThat(isNullOrMissing(data.path("sampling"))).isTrue();
     }
 
+    /**
+     * CAL-27：自定义模式只给「负载质量 + 运动距离 + 最大速度」也要能算 ——
+     * 按标准梯形 1:3 反解（t = 1.5d/v、a = 2v²/d），质量不参与运动学反解。
+     */
+    @Test
+    void customWithOnlyVelocityDerivesAccelerationAndTime() throws Exception {
+        Map<String, Object> body = baseRequest("linear", "custom");
+        Map<String, Object> plan = new LinkedHashMap<>();
+        plan.put("load", 2.0);
+        plan.put("distance", 1.0);
+        plan.put("maxVelocity", 0.5);
+        body.put("plan", plan);
+
+        JsonNode data = call(body, 200).path("data");
+        assertThat(data.path("stage").path("ok").asBoolean()).isTrue();
+
+        JsonNode curve = data.path("curve");
+        assertThat(curve.path("time").asDouble()).isCloseTo(3.0, within(1e-9));
+        assertThat(curve.path("peakVelocity").asDouble()).isCloseTo(0.5, within(1e-9));
+        assertThat(curve.path("peakAcceleration").asDouble()).isCloseTo(0.5, within(1e-9));
+        assertThat(curve.path("shape").asText()).isEqualTo("trapezoid");
+        assertThat(curve.path("timeDerived").asBoolean()).isTrue();
+    }
+
+    /** 同一口径在旋转页签成立，且结果按 rpm（速度）/ rpm/s（加速度）回传。 */
+    @Test
+    void rotaryCustomWithOnlyVelocityKeepsRpmUnits() throws Exception {
+        Map<String, Object> body = baseRequest("rotary", "custom");
+        Map<String, Object> plan = new LinkedHashMap<>();
+        plan.put("load", 0.05);
+        plan.put("distance", 360.0);
+        plan.put("maxVelocity", 150.0);
+        body.put("plan", plan);
+
+        JsonNode curve = call(body, 200).path("data").path("curve");
+        // 150 rpm = 900 °/s，t = 1.5×360/900 = 0.6 s，a = 2×900²/360 = 4500 °/s² = 750 rpm/s
+        assertThat(curve.path("time").asDouble()).isCloseTo(0.6, within(1e-9));
+        assertThat(curve.path("peakVelocity").asDouble()).isCloseTo(150.0, within(1e-6));
+        assertThat(curve.path("peakAcceleration").asDouble()).isCloseTo(750.0, within(1e-6));
+    }
+
     @Test
     void accelerationLimitConflictReturnsLimitConflict() throws Exception {
         Map<String, Object> body = baseRequest("linear", "custom");

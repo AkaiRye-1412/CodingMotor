@@ -31,7 +31,6 @@ class MotionGoldenTest {
 
     private static final Map<String, CalcErrorCode> CUSTOM_FAILURE_CODES = Map.of(
             "custom-invalid-dist", CalcErrorCode.PLAN_INVALID,
-            "custom-only-velocity-error-1-v2", CalcErrorCode.PLAN_INVALID,
             "custom-accel-conflict-1-1-a39", CalcErrorCode.LIMIT_CONFLICT,
             "custom-velocity-conflict-1-1-v09", CalcErrorCode.LIMIT_CONFLICT,
             "custom-both-conflict-1-1-a5-v12", CalcErrorCode.LIMIT_CONFLICT);

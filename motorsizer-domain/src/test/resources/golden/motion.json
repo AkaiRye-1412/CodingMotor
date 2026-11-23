@@ -7,6 +7,7 @@
     "fixturesSha256": "0612eba699c5d2192b92109224f35f9f4cc322dad24db72f7a88010b7ae1de68",
     "frozenAt": "2026-11-18",
     "tolerance": 1e-9,
+    "velocityOnlyOverride": "2026-11-23 用户裁定（CAL-27）：自定义模式只给「运动距离 + 最大速度」时不再报错，按标准梯形 1:3 反解（t = 1.5d/v、a = 2v²/d）。原用例 custom-only-velocity-error-1-v2（原型：PLAN_INVALID）改为 custom-only-velocity-trapezoid-1-v2 并换成新解，其余用例仍与原型逐字一致。",
     "note": "快照由 Node 一次性生成后冻结；Java 单测只读这些 JSON 比对，构建链不依赖 Node。修改 calc.js 或 data.js 后必须重新运行 node scripts/gen-golden.js 并评审快照差异。"
   },
   "pointToPoint": [
@@ -388,14 +389,34 @@
       }
     },
     {
-      "id": "custom-only-velocity-error-1-v2",
+      "id": "custom-only-velocity-trapezoid-1-v2",
       "input": {
         "dist": 1,
         "vMax": 2
       },
       "result": {
-        "ok": false,
-        "message": "只给最大速度无法确定曲线：速度只约束匀速平台段，\n还需「最大加速度」或「运动时间」之一"
+        "ok": true,
+        "dist": 1,
+        "time": 0.75,
+        "x": 0.25,
+        "vPeak": 2,
+        "aPeakIdeal": 8,
+        "aPeak": 8,
+        "shape": "trapezoid",
+        "autoShape": true,
+        "auto": {
+          "time": true,
+          "vMax": false,
+          "aMax": true
+        },
+        "mode": "custom",
+        "note": "未给时间与加速度：由最大速度 2 按标准梯形（加速/匀速/减速各占 1/3）反算运动时间 0.75 s",
+        "tau": 0,
+        "smoothApplied": false,
+        "timeDerived": true,
+        "tAccel": 0.25,
+        "tCruise": 0.25,
+        "tDecel": 0.25
       }
     },
     {

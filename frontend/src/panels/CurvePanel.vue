@@ -44,6 +44,14 @@ const speedReferences = computed(() => {
   return [{ value: limit, label: '用户速度上限', color: '#e6a23c' }]
 })
 
+/**
+ * 自定义模式的求解口径说明（K1 的 `curve.note`）：缺项被反解时写明「按什么假设算出来的」，
+ * 例如只给最大速度时「按标准梯形（加速/匀速/减速各占 1/3）反算运动时间」（CAL-27）。
+ */
+const customNote = computed(() =>
+  setting.mode === 'custom' ? (response.value?.curve?.note ?? null) : null,
+)
+
 
 </script>
 
@@ -64,6 +72,7 @@ const speedReferences = computed(() => {
       color="#e6a23c"
       :stage-lines="stageLines"
     />
+    <div v-if="customNote" class="curve-note">{{ customNote }}</div>
   </div>
 </template>
 
@@ -73,6 +82,13 @@ const speedReferences = computed(() => {
   flex-direction: column;
   gap: 8px;
   transition: opacity 0.2s ease;
+}
+
+.curve-note {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--el-text-color-secondary);
+  white-space: pre-line;
 }
 
 .curve-panel.is-calculating {

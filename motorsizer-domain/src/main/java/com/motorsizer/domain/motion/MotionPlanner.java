@@ -13,8 +13,9 @@ import com.motorsizer.domain.units.ValueFormatter;
 /**
  * K1 运动规划：点到点、自定义反解、S 曲线平滑。
  *
- * <p>逐行等价于原型 {@code prototype/js/calc.js}（冻结基线）；任何行为差异都会破坏
- * 黄金快照对比（R-2）。浮点容差由测试层负责，本类不做额外取整。
+ * <p>除 CAL-27（自定义只给速度时按标准梯形 1:3 反解，原型直接报错）外，逐行等价于原型
+ * {@code prototype/js/calc.js}（冻结基线）；其余任何行为差异都会破坏黄金快照对比（R-2）。
+ * 浮点容差由测试层负责，本类不做额外取整。
  */
 public final class MotionPlanner {
 
@@ -57,7 +58,14 @@ public final class MotionPlanner {
         return new MotionResult.Success(curve);
     }
 
-    /** 自定义：形状由系统判定，缺失参数反解；优先级为加速度上限 > 速度上限 > 默认 1:3。 */
+    /**
+     * 自定义：形状由系统判定，缺失参数反解。
+     *
+     * <p>已知时间的口径优先级：加速度上限 &gt; 速度上限 &gt; 默认 1:3；未知时间时：
+     * 「速度 + 加速度」反算时间 →「只给速度」按标准梯形 1:3 反解（CAL-27）→ 三项全空才报错。
+     *
+     * <p>质量/惯量不参与本方法：它只在 {@code F = m·a} 处影响推力/转矩，与运动学反解无关。
+     */
     public static MotionResult planCustom(CustomPlanInput input) {
         double distance = input.distance();
         if (!Double.isFinite(distance) || distance <= 0) {
@@ -159,14 +167,20 @@ public final class MotionPlanner {
         }
 
         if (velocityLimit != null) {
-            return MotionResult.Failure.of(CalcErrorCode.PLAN_INVALID,
-                    "只给最大速度无法确定曲线：速度只约束匀速平台段，\n"
-                            + "还需「最大加速度」或「运动时间」之一");
+            // CAL-27：只给速度也能求解——把速度上限当作峰值速度，按标准梯形（加/匀/减各占 1/3）
+            // 反解时间与加速度：d = v·(t − t/3) → t = 1.5d/v，a = v/(t/3) = 2v²/d。
+            double derivedTime = 1.5 * distance / velocityLimit;
+            return finalizePlan(derivedTime / 3, derivedTime, distance,
+                    "未给时间与加速度：由最大速度 " + ValueFormatter.format(velocityLimit, 3)
+                            + " 按标准梯形（加速/匀速/减速各占 1/3）反算运动时间 "
+                            + ValueFormatter.format(derivedTime, 4) + " s",
+                    auto, velocityLimit);
         }
 
         return MotionResult.Failure.of(CalcErrorCode.PLAN_INVALID,
-                "缺少运动时间、最大速度与最大加速度，无法求解\n"
-                        + "至少补充「运动时间」，或同时给出「最大速度」与「最大加速度」");
+                "运动时间、最大速度与最大加速度全部留空，无法求解\n"
+                        + "请至少补充其一：「运动时间」（直接反解），或「最大速度」"
+                        + "（按标准梯形 1:3 反解时间与加速度）");
     }
 
     /**
